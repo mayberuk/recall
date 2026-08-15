@@ -1,0 +1,162 @@
+{
+  "go": "go1.26.5",
+  "note": "allocs_per_op is enforced; bytes_per_op is recorded but advisory, because the corpus root path is embedded in every turn and its length differs per machine",
+  "samples": [
+    {
+      "name": "BenchmarkArchive/medium/cold",
+      "size": "medium",
+      "allocs_per_op": 633944,
+      "bytes_per_op": 396343548
+    },
+    {
+      "name": "BenchmarkArchive/medium/warm",
+      "size": "medium",
+      "allocs_per_op": 816,
+      "bytes_per_op": 206616
+    },
+    {
+      "name": "BenchmarkArchive/small/cold",
+      "size": "small",
+      "allocs_per_op": 64310,
+      "bytes_per_op": 41572590
+    },
+    {
+      "name": "BenchmarkArchive/small/warm",
+      "size": "small",
+      "allocs_per_op": 392,
+      "bytes_per_op": 83864
+    },
+    {
+      "name": "BenchmarkRank/medium/collapse",
+      "size": "medium",
+      "allocs_per_op": 66,
+      "bytes_per_op": 6776084
+    },
+    {
+      "name": "BenchmarkRank/medium/score",
+      "size": "medium",
+      "allocs_per_op": 1813,
+      "bytes_per_op": 23167416
+    },
+    {
+      "name": "BenchmarkRank/small/collapse",
+      "size": "small",
+      "allocs_per_op": 10,
+      "bytes_per_op": 745633
+    },
+    {
+      "name": "BenchmarkRank/small/score",
+      "size": "small",
+      "allocs_per_op": 460,
+      "bytes_per_op": 2280957
+    },
+    {
+      "name": "BenchmarkSearch/medium/conjunction",
+      "size": "medium",
+      "allocs_per_op": 108,
+      "bytes_per_op": 20188562
+    },
+    {
+      "name": "BenchmarkSearch/medium/miss",
+      "size": "medium",
+      "allocs_per_op": 82,
+      "bytes_per_op": 15656
+    },
+    {
+      "name": "BenchmarkSearch/medium/phrase",
+      "size": "medium",
+      "allocs_per_op": 84,
+      "bytes_per_op": 108872
+    },
+    {
+      "name": "BenchmarkSearch/medium/relaxed",
+      "size": "medium",
+      "allocs_per_op": 85,
+      "bytes_per_op": 11544
+    },
+    {
+      "name": "BenchmarkSearch/medium/single-term",
+      "size": "medium",
+      "allocs_per_op": 75,
+      "bytes_per_op": 10888
+    },
+    {
+      "name": "BenchmarkSearch/medium/single-term-all-tiers",
+      "size": "medium",
+      "allocs_per_op": 76,
+      "bytes_per_op": 13608
+    },
+    {
+      "name": "BenchmarkSearch/small/conjunction",
+      "size": "small",
+      "allocs_per_op": 60,
+      "bytes_per_op": 1427370
+    },
+    {
+      "name": "BenchmarkSearch/small/miss",
+      "size": "small",
+      "allocs_per_op": 43,
+      "bytes_per_op": 14136
+    },
+    {
+      "name": "BenchmarkSearch/small/phrase",
+      "size": "small",
+      "allocs_per_op": 41,
+      "bytes_per_op": 21272
+    },
+    {
+      "name": "BenchmarkSearch/small/relaxed",
+      "size": "small",
+      "allocs_per_op": 46,
+      "bytes_per_op": 10032
+    },
+    {
+      "name": "BenchmarkSearch/small/single-term",
+      "size": "small",
+      "allocs_per_op": 36,
+      "bytes_per_op": 9368
+    },
+    {
+      "name": "BenchmarkSearch/small/single-term-all-tiers",
+      "size": "small",
+      "allocs_per_op": 37,
+      "bytes_per_op": 12088
+    },
+    {
+      "name": "BenchmarkStrip/medium/cold",
+      "size": "medium",
+      "allocs_per_op": 424803,
+      "bytes_per_op": 82423480
+    },
+    {
+      "name": "BenchmarkStrip/medium/incremental",
+      "size": "medium",
+      "allocs_per_op": 4225,
+      "bytes_per_op": 15332832
+    },
+    {
+      "name": "BenchmarkStrip/small/cold",
+      "size": "small",
+      "allocs_per_op": 42559,
+      "bytes_per_op": 11229921
+    },
+    {
+      "name": "BenchmarkStrip/small/incremental",
+      "size": "small",
+      "allocs_per_op": 295,
+      "bytes_per_op": 4513661
+    },
+    {
+      "name": "BenchmarkStripRecord/medium",
+      "size": "medium",
+      "allocs_per_op": 18,
+      "bytes_per_op": 2880
+    },
+    {
+      "name": "BenchmarkStripRecord/small",
+      "size": "small",
+      "allocs_per_op": 18,
+      "bytes_per_op": 2880
+    }
+  ]
+}

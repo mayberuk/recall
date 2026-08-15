@@ -1,0 +1,47 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: Cross-compile
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}"
+          mkdir -p dist
+          platforms=(
+            "linux amd64"
+            "linux arm64"
+            "darwin amd64"
+            "darwin arm64"
+            "windows amd64"
+            "windows arm64"
+          )
+          for p in "${platforms[@]}"; do
+            read -r goos goarch <<< "$p"
+            ext=""
+            [ "$goos" = "windows" ] && ext=".exe"
+            out="dist/recall-${version}-${goos}-${goarch}${ext}"
+            CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
+              go build -ldflags "-X main.version=${version}" -o "$out" ./cmd/recall
+          done
+      - name: Checksums
+        run: |
+          cd dist
+          sha256sum -- * > checksums.txt
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/* --title "${GITHUB_REF_NAME}" --generate-notes

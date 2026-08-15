@@ -1,0 +1,23 @@
+/recall
+*.test
+.DS_Store
+
+.claude/
+/logs/
+/bench/corpus/
+coverage.out
+/dist/
+
+# Some developers ignore *.md machine-wide via core.excludesFile. Documentation
+# is part of this repository, so re-include it: without this, a new .md file is
+# silently skipped by `git add -A` on those machines and never reaches a commit.
+!*.md
+
+# The design record from before this was public. Kept on disk, not published:
+# it describes an internal build process rather than the tool.
+/CLAUDE.md
+/docs/orchestration.md
+/docs/handoff-agent-ergonomics.md
+/docs/plan-agent-ergonomics.md
+/docs/review-findings.md
+/docs/spike-fzf.md

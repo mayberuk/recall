@@ -1,0 +1,432 @@
+---
+brainstorm: transcript-recall
+title: Machine-wide recall over past Claude Code sessions
+status: ready
+altitude: architecture
+created: 2026-08-13T00:00:00Z
+updated: 2026-08-13T00:00:00Z
+seeded-from: grillme
+reviewed: 2026-08-13 — adversarial hypothesis test, verdict DENIED, 12 findings accepted
+---
+
+# Machine-wide recall over past Claude Code sessions
+
+## Objective
+A command-line tool that answers "which session was that", "what did I conclude", "when did
+I first say this", and "have I hit this before" across every session on this machine, without
+pulling transcript text into the asking agent's context.
+
+## Problem / Context
+Requirements pinned in `docs/requirements.md`. The store at `~/.claude/projects/` keys
+by checkout path, so one logical repo (a mobile app's, in the case that motivated this) can span
+13 directories — a search scoped to the working directory misses. Today's failure: looked in one
+checkout, the session was in a different checkout of the same repo.
+
+## Measured facts about the corpus
+
+All figures re-measured corpus-wide on 2026-08-13 and independently verified during adversarial
+review. Earlier sampled figures in this document were wrong and have been replaced.
+
+### What the corpus actually contains
+
+```
+1,077 .jsonl files  =  130 session files  +  947 subagent transcripts
+                       132 distinct sessionIds
+```
+
+The layout is `<project>/<sessionId>.jsonl` for a session and
+`<project>/<sessionId>/subagents/agent-<id>.jsonl` for each Task-tool subagent it spawned.
+**88% of files are subagent transcripts.** There are ~131 real sessions spanning 2026-06-10 to
+2026-08-13 — a rate of **~2 sessions/day**, not the 16.8 an earlier draft claimed by counting
+files as sessions.
+
+### Byte accounting (1.29 GB)
+
+| Slice | Size | Share |
+|---|---|---|
+| `user` records | 820 MB | 62% |
+| ├─ `message` (tool_result blocks) | 405 MB | |
+| └─ `toolUseResult` — a *second* structured copy of the same results | 362 MB | |
+| `assistant` records | 373 MB | 28% |
+| ├─ `thinking` **signature** (opaque base64, zero recall value) | 125.4 MB | |
+| ├─ `tool_use` (Edit/Write inputs carry whole file contents) | 65 MB | |
+| ├─ `text` — actual assistant prose | 18 MB | |
+| └─ `thinking` **text** — actual reasoning | 2.09 MB | |
+| `attachment` | 106 MB | 8% |
+| per-line metadata (uuid/sessionId/cwd/timestamp × ~266K records) | ~50 MB | 4% |
+
+**58% of the store is tool results, roughly half of that redundant duplication.** The
+conversation is **34.3 MB (2.6% of bytes)**, which compresses to roughly 6 MB. Archive growth
+at ~2 sessions/day is a few MB per year.
+
+**Thinking is 97% signature.** Only 2.09 MB is reasoning text, and **94.5% of thinking blocks
+carry no text at all** — Claude Code does not persist most reasoning. Including all thinking
+text costs ~6% of the archive, not 6×.
+
+### Per-session conversation size — the figure that broke a decision
+
+```
+sessions=131   total=34.3 MB
+mean=268 KB (~67K tokens)   median=118 KB (~29K tokens)
+p90=681 KB   p99=1.5 MB   max=2.22 MB
+sessions >512 KB: 24    >1 MB: 6
+```
+
+An earlier draft claimed ~19 KB / ~5K tokens per session. That was 26 MB divided by 1,074
+*files* when only 131 are sessions — wrong by ~14×. A whole-session fetch is **not** cheap, and
+an unbounded one on the largest session would load ~550K tokens, violating the requirements
+brief's dealbreaker directly.
+
+### Tool-result size distribution
+
+```
+72,089 tool results   mean 4,979 B   p50 585 B   p90 7,023 B   p99 83,857 B   max 679 KB
+under 2 KB:  72.4% corpus-wide  |  79.1% in files >1 MB  |  59.9% in files ≤1 MB
+```
+
+An earlier draft said 81%, measured on 25 files all larger than 1 MB — the least representative
+17% of the corpus by count. **By bytes rather than count**, 92.6% of tool-result text sits in
+results over 2 KB, so a 1 KB head + 1 KB tail indexes only **~19% of tool-result text**.
+
+### Record types (20, whole corpus)
+
+```
+assistant 137,991 · user 77,477 · attachment 27,281 · last-prompt · mode · permission-mode
+ai-title · system 4,434 · queue-operation · pr-link 3,543 · file-history-snapshot
+agent-name · file-history-delta · custom-title · bridge-session · worktree-state
+relocated · frame-link · started · result
+```
+
+Free facets already in the data: `pr-link` (prNumber/prRepository/prUrl) → "the session that
+produced MR 1284"; `attributionSkill` / `attributionPlugin` / `attributionMcpServer` →
+"sessions where flightplan's execute ran"; `custom-title` and `ai-title` → session titles;
+`relocated` (relocatedCwd) → sessions whose directory moved.
+
+**Attribution fields are not universal.** `isSidechain` is present only on the four
+conversational record types (user, assistant, attachment, system) — 93% of records, and the
+16 metadata types have no author to attribute. `agentId` covers 43–46% of user and assistant
+records and swings from 0% to 83% across versions with no monotone pattern. Subagent
+attribution is therefore `isSidechain`-derived with `agentId` as an opportunistic refinement,
+not free.
+
+### Records are duplicated across files
+
+6 top-level files carry more than one `sessionId`, and **9,473 record uuids appear in more than
+one file (17,659 redundant copies)** — resumed and forked sessions carry prior records forward.
+Files are append-only, but they are *not* one-session-per-file. Any count of hits or turns must
+deduplicate by uuid or it double-counts.
+
+### Version tolerance
+
+The corpus spans **24 Claude Code versions** (2.1.170 → 2.1.231) and the official docs state
+the entry format is internal and changes between releases. A parser must tolerate absent fields
+rather than assume a schema.
+
+`promptSource` is **not** an example of version drift — an earlier draft claimed it was added in
+a later version, but it is present in every version including the oldest at a similar rate
+(2–9% of user records). It records prompt *origin*: `typed` 1,069 / `sdk` 1,024 / `system` 514 /
+`queued` 79. No cleanly version-gated field was found in the retained window; the
+version-tolerance requirement stands on the documented format warning and on `agentId`'s
+0–83% swing, not on `promptSource`.
+
+### Human-turn discrimination — settled by spike 2026-08-14
+
+**`promptSource == "typed"` is the discriminator. Content-shape detection is wrong and
+overcounts by 5×.** Every record in the 5× gap is machine-generated.
+
+Cross-tab of the 5,435 human-shaped user records (content is a string or a `text` block, no
+`tool_result`):
+
+```
+promptSource   isSidechain    count
+ABSENT         main           1,552     ← examined; ~zero are his prose
+ABSENT         sidechain      1,163     ← promptSource is never written in subagent transcripts
+typed          main           1,102     ← verified clean, unmistakably his voice
+sdk            main           1,021     ← prompts sent TO subagents
+system         main             517
+queued         main              80
+```
+
+Two structural facts: **no labelled record is ever a sidechain**, so absence inside a subagent
+transcript is expected rather than missing data; and absence is **not** version drift — it runs
+33–68% across all 24 versions with no trend.
+
+All 1,552 unlabelled main-session records classified by pattern:
+
+```
+343  slash-command wrappers (<command-name>/<command-message>)
+279  other XML wrappers (<local-command-caveat>, <bash-input>, …)
+259  skill preambles ("Base directory for this skill: …") and image-paste metadata
+251  <local-command-stdout> — command output
+178  compact continuation summaries ("This session is being continued from …")
+140  "[Request interrupted by user]"
+102  bare slash commands ("/compact")
+  0  prose the user actually typed
+```
+
+**One carve-out.** 166 slash-command records carry real typed words inside `<command-args>` —
+`/livecheck:run on an android device to test`, `/atlas can you look at the state of my
+cc-plugins repo…` — and **all 166 are unlabelled**. So the rule is `promptSource == "typed"`
+**plus** the `<command-args>` payload of slash-command records, args only, wrapper discarded.
+Total genuinely-typed turns: **~1,268**.
+
+Rejected: content-shape with an exclusion list. It was the working hypothesis and the spike
+refuted it — the exclusion list would have had to name seven machine-text families to recover a
+signal a single field already carries exactly.
+
+**Safety property this creates.** The rule leans on a field absent from half of all human-shaped
+records. That absence is *meaningful*, but if a future Claude Code version stops writing
+`promptSource` altogether the rule degrades to returning nothing rather than to returning noise.
+`recall doctor` must warn when a corpus contains human-shaped main-session records and **zero**
+`typed` labels — that combination means the field vanished, not that the user stopped talking.
+
+### Retention — the corpus deletes itself
+
+`cleanupPeriodDays` was unset in both `~/.claude/settings.json` and managed settings, so the
+documented 30-day default governed. Evidence of loss already on disk: nothing survives past 90
+days, while `history.jsonl` prompts reach back to 2026-01-21 and 288 session IDs in it have no
+transcript. **Set to 90 on 2026-08-13**, verified.
+
+`~/.claude/history.jsonl` (1.8 MB, ~4,678 prompts, 358 sessions) is a partial, differently-
+retained record of typed prompts only. Useful as a complementary archive of already-deleted
+sessions, never as an index.
+
+`sessions-index.json` exists in 1 of 34 project dirs and carries `summary`, `gitBranch`,
+`messageCount`, `isSidechain`, `firstPrompt`. Built lazily — a hint, not a source of truth.
+
+### Measured performance
+
+| Operation | Cost |
+|---|---|
+| `stat` every file (freshness check) | 0.4 s |
+| Cold strip of all 1,077 files / 1.29 GB via one `jq` process | 8–10 s |
+
+A per-file loop spawns 1,077 processes and takes minutes; piping all files into a single `jq`
+takes seconds. This is a real constraint on any implementation.
+
+### Prior art
+
+- `ccs` — ripgrep + Python over the same files; claims ~70ms across 1000+ sessions / 2 GB.
+  Does not do repo identity, tier-labelled search, terms-present-nearby, or ranking.
+- `claude-history` (Rust) — fuzzy-search TUI with field-aware ranking.
+- `claude-code-log`, `simonw/claude-code-transcripts` — transcript→HTML renderers, not search.
+
+Worth a short evaluation before building.
+
+## Current direction
+An index that is a cache of the ~9-second strip pass, not a separate structure that can
+disagree with the source. Locate exactly over a complete index; return a bounded window of
+turns around each hit rather than whole sessions.
+
+## Decisions
+
+- **Freshness by byte-offset comparison at query time** — store each file's length; unchanged →
+  skip, grew → seek and read new bytes, new → read whole, shrank or mtime moved without growth →
+  re-read whole. Worst case falls back to the full pass and is still correct. Rejected:
+  background daemon / session hook (needs setup, can miss, and a miss is invisible).
+- **Fetch returns a turn window around the hit, not the whole session** — mean session
+  conversation is ~67K tokens and the largest is ~550K, so a whole-session fetch violates the
+  dealbreaker. `--full` remains available behind an explicit byte cap that refuses rather than
+  truncates. Rejected: byte cap with continuation cursor (multiple round trips on the 24
+  sessions over 512 KB, and it keeps a mental model the data does not support), summarizing
+  oversized sessions (reintroduces the lossy component rejected when the trustworthy floor was
+  chosen).
+- **The no-false-negatives guarantee is absolute over whatever tier was searched, and the tool
+  always declares which** — superseded the earlier head/tail compromise once linear-scan cost
+  was measured. Nothing is truncated: the conversation tier is scanned in full by default
+  (~35 ms) and tool output is scanned in full when asked (~355 ms). What makes the default safe
+  is the declaration, present in every response: `conversation only — tool output NOT searched
+  (--results)`. Rejected: head/tail truncation (indexes only ~19% of tool-result *text* by
+  bytes, a real false-negative surface with nothing compensating for it), full-tier default
+  (fine one-shot, sticky at ~355 ms per keystroke in interactive mode).
+- **Subagent transcripts are indexed, labelled, and folded into the parent session** — 947 of
+  1,077 files are subagent work, and a decision reached inside an Explore or review agent is
+  part of what happened. Hits are tagged agent-authored via `isSidechain`; the session is the
+  unit of result. Rejected: separate result type (adds a second entity to the mental model),
+  exclusion (makes delegated work unfindable, and heavy delegation to subagents is routine).
+- **Counts deduplicate by record uuid** — 17,659 records exist in more than one file, so hit
+  counts, turn counts, and verbatim output are computed once per logical turn.
+- **Lexical expansion over semantic search** — stemming and fuzzy matching, and on a miss,
+  report the terms that actually exist in the corpus near the query. Converts a dead end into
+  the next query, which suits an agent caller that re-queries cheaply, and adds no dependency.
+  Rejected: local embeddings (heavy dependency; ranking can bury a hit — revisit only if
+  empty-query logs prove it necessary), bounded LLM distillation (recurring cost forever),
+  exact-only (a miss gives no next move).
+- **Discovery via the main loop calling the tool directly** — bounded output removes the reason
+  transcript searches were delegated, so main-loop-only awareness channels suffice; a line in
+  the user's own agent definitions is the backup. Rejected: exposing it in the tool roster as
+  a plugin/MCP (best discovery but violates the CLI lock-in and costs roster context),
+  main-loop-only with no backup (measured evidence of failing on this machine).
+- **Repo identity is the git remote, walked up from `cwd`** — separate checkouts and worktrees of
+  the same repo all resolve to the same remote. The walk must continue past *any* failure, not only a missing
+  directory: an orphaned worktree with a pruned gitdir has a `.git` file that stops a naive walk
+  and errors on remote lookup. A worktree resolves via its gitdir pointer to the parent repo. A
+  repo with no remote (`dev/homebase`) is a distinct "repo, no remote" identity keyed by toplevel
+  path, not an unresolved one. Measured on 144 distinct cwd values: 11 outside any repo, 2
+  remoteless, 14 paths no longer on disk; `relocated` records carry `relocatedCwd` and no `cwd`.
+- **Default scope is the current repo; machine-wide is one flag** — with a zero-result inside
+  repo scope automatically probing wider and reporting what exists elsewhere, so the dangerous
+  silence cannot happen.
+- **Three tiers, searched by default and tier-labelled; displayed selectively** — conversation
+  (34.3 MB) indexed and shown; invocation *signatures* with payloads dropped, shown one line
+  each on `--tools`; tool results indexed head+tail and shown only on `--results`. Tail matters
+  because Bash failures print at the end.
+- **Results group by session, and sort follows the verb** — `find` ranks by concentration,
+  `when` is chronological, `--sort recent` overrides, facet summary above results. Concentration
+  needs a minimum-hits floor or a shrinkage term (see Ranking evidence) and its denominator must
+  be conversation turns only, not all records.
+- **The tool archives, not just searches** — the stripped conversation is written to a
+  compressed archive that never expires (~6 MB today). Raw retention set to 90 days, which buys
+  *archiving latency* rather than retention. Rejected: 6-month archive cap (no storage argument
+  against a few MB, and it caps how far "when did I first" can reach), leaving raw at 30 days.
+- **Archived and live are different epistemic states, and the tool reports both boundaries** —
+  once the raw file is gone the archive cannot be verified against source. The coverage footer
+  reports the mtime-based live boundary (what cleanup will delete) *and* the content-date
+  boundary (what the archive covers); measured divergence between them reaches **55 days**,
+  because a resumed session's mtime is far newer than its content. A file that disappears
+  between the archiver's `stat` and its `open` is reported, never silently skipped.
+
+## Stack
+
+Chosen on measurement taken on this machine 2026-08-13, not on precedent alone.
+
+- **Go, with `github.com/tidwall/gjson` as the only dependency.** Matches `fp` and `atlas`
+  (both Go, stdlib `flag`, Go 1.24), gives a ~5 ms process start that a per-query agent tool
+  needs, and ships a single static binary with `CGO_ENABLED=0`. Measured full-corpus strip:
+  **gjson 1.31 s (1011 MB/s) · Go stdlib `encoding/json` 7.21 s · `jq` 9.6 s.** gjson wins by
+  parsing lazily — extracting only the requested path and skipping the rest — not by being a
+  faster language; eager Go and eager C are only 1.3× apart.
+  This is the first plugin here with an external dependency; accepted for a 5.5× strip pass.
+- **No index and no database.** After stripping, the searchable corpus is 36.5 MB; a linear
+  scan is ~35 ms, and even all tiers in full is ~355 ms. An index would add a staleness class,
+  a corruption class, and a way to silently under-report — all for a problem the corpus is too
+  small to have. Rejected: SQLite FTS5 via `modernc.org/sqlite` v1.56.0, which was **verified
+  working** (pure Go, SQLite 3.53.3, FTS5 with porter stemming, `bm25()`, `snippet()`,
+  `PRAGMA integrity_check`, 9.2 MB static binary) — it is a real option if the corpus ever
+  outgrows linear scan, but bm25 was deliberately rejected in favour of concentration ranking,
+  stemming is measured worthless here, and `snippet()` is byte offsets around a match.
+- **Search covers the conversation tier by default; tool output is opt-in** — and every
+  response states it: `conversation only — tool output NOT searched (--results)`. The
+  dealbreaker was a *silent* false negative; an explicit declaration of what was not searched
+  is honest coverage, not a silent miss. Rejected: full-tier default (~355 ms is fine one-shot
+  but sticky per keystroke interactively), head/tail truncation (a real false-negative surface
+  with no compensating honesty).
+- **Interactive mode is an fzf front-end, not a custom TUI** — a shell function over the same
+  CLI commands. Zero Go dependencies added (fzf is an external binary, itself written in Go,
+  already installed at 0.74.1). `--disabled` turns off fzf's own matching so the tool owns
+  search and ranking; `--track` keeps the highlighted row stable as results reload; `--read0`
+  plus `--gap` allow multi-line records; `--with-nth` hides the session ID while keeping it
+  addressable by `--preview` and key-bindings; `--ansi` colours. All verified present on
+  0.74.1. Rejected: a native Bubble Tea TUI (Bubbles v2.0.0 has the list/input/viewport
+  components and would keep the corpus resident in RAM, avoiding per-keystroke process start —
+  worth revisiting only if full-tier interactive search proves sticky), because it duplicates
+  fzf, adds a dependency tree, and risks making something reachable only through a TUI when the
+  primary caller is an agent that cannot drive one.
+
+**Ranking speed is not a design concern.** Sorting 131 sessions, or a few thousand hits, costs
+microseconds. Scanning is the only real cost.
+
+## The filtering funnel — how 1.29 GB becomes 36.5 MB
+
+Measured corpus-wide:
+
+```
+0. everything on disk                                 1322 MB   100%
+1. keep only user + assistant records                 1191 MB    90%
+2. drop toolUseResult (a duplicate of the results)     829 MB    63%
+3. keep only the message body (drop per-line metadata)  706 MB    53%
+4. drop tool_result blocks (command/file output)        363 MB    28%
+5. drop tool_use blocks (Edit/Write payloads)           298 MB    23%
+6. drop thinking signatures (opaque base64)             172 MB    13%
+7. keep only actual words                              36.5 MB   2.8%
+```
+
+The largest single cut is step 2: tool output is stored **twice** per record, once in
+`message.content` and again in the top-level `toolUseResult` field. Step 6 is cryptographic
+signatures on thinking blocks — no words, unsearchable, 126 MB.
+
+Steps 0–6 are progressive subtractions with some overlap slop; step 7 is a direct measurement
+of what is kept and is the number to trust. Of the final 36.5 MB, 34.4 MB is conversation text
+and 2.1 MB is thinking text.
+
+## Ranking evidence
+
+Grouping by session is most of the fix: `"wallet"` matches ~2,225 turns across 70 sessions.
+Hits-per-turn separates real sessions from incidental mentions — but it fails in **both**
+directions, and an earlier draft tested only one:
+
+| session | hits / turns | ratio | |
+|---|---|---|---|
+| 4fa40cc0 | 31 / 192 | 0.1615 | short, genuinely about wallet |
+| e5f9a621 | 1 / 13 | 0.0769 | **one passing mention — outranks the real one** |
+| 6941d8f9 | 554 / 7944 | 0.0697 | the corpus's most wallet-intensive session |
+| 0b040c29 | 1 / 7181 | 0.000 | huge session, one mention — correctly sunk |
+
+Raw count and normalized density each fail alone. Density correctly sinks `0b040c29` but lets a
+13-turn session with a single mention beat the 554-hit session the query is actually about.
+The rule needs a minimum-hits floor or shrinkage (`hits/(turns+k)`), and the denominator must
+count conversation turns only — counting tool-result records penalises a session for using tools.
+
+Also measured: the flood case dominates the miss case. Stemming buys nearly nothing here
+(`wallets` appears 0 times); the value of lexical expansion is concentrated in the
+terms-present-nearby response.
+
+## Sketches
+- 2026-08-13 ascii (see Trail) — CLI surface: `find` / `show` / `when`, coverage footer,
+  tier tags, terms-present-nearby miss response.
+
+## Scope
+**In:** recall over session transcripts and their subagent transcripts — locate, conclusion,
+timeline, recurrence — plus a compressed archive of the stripped conversation so recall outlives
+Claude Code's retention window.
+**Out:** capture and curation (secondbrain / atlas / research claims are separate tools for
+separate jobs). Backing the archive up off-machine is a separate decision, deliberately not
+taken here.
+
+## Open questions
+For `/plan`:
+- **fzf field indexing with multi-line records** — `--delimiter`/`--with-nth` were designed for
+  one-line records and their interaction with `--read0` is the fiddly part of the interactive
+  surface. Spike it before committing to three-line results; a single dense line is the safe
+  fallback and still matches the reference screenshot.
+- ~~Which human-turn discriminator is correct~~ — **settled 2026-08-14 by spike**, see
+  §Human-turn discrimination. `promptSource == "typed"` plus `<command-args>` payloads; ~1,268
+  turns. Content-shape refuted.
+- **What the parser does with an unrecognised record type** — ignore, warn, or refuse. Ignoring
+  silently is how a false negative gets in through the back door across 24 versions.
+- **Archive integrity** — where it lives, and whether a corrupt or truncated archive is
+  *detectable* rather than merely wrong. Once raw files are deleted there is nothing to
+  reconcile against.
+- **Evaluate `ccs` first** — it covers the locate case at ~70ms and may be extendable.
+- **Implementation language** — `fp` and `atlas` are both Go here; precedent, not a decision.
+
+Resolved by review, previously open:
+- Thinking blocks: **include the 2.09 MB of thinking text** (~6% archive cost, not 6×), and
+  record that 94.5% of reasoning is not persisted so it cannot be relied on for conclusions.
+- Subagent turns: indexed, labelled, folded into the parent session.
+
+## Trail
+- 2026-08-13 [research] measured the corpus; concluded conversation is ~1% of bytes.
+- 2026-08-13 [options] shape fork → chose index-as-cache-of-the-strip-pass; rejected
+  distillation (lossy in the dealbreaker direction) and pure scan (too slow per query).
+- 2026-08-13 [options] recall fork → lexical expansion; rejected semantic, distillation, exact-only.
+- 2026-08-13 [options] discovery fork → main loop calls it directly, agent definitions as backup.
+- 2026-08-13 [options] ranking fork → sort follows the verb.
+- 2026-08-13 [research] audit + web search → found retention deleting data (288 sessions already
+  lost), `pr-link`/attribution facets, prior art, and the `history.jsonl` partial record.
+- 2026-08-13 [decide] archive unbounded, raw retention 90 days; `cleanupPeriodDays: 90` written.
+- 2026-08-13 [challenge] adversarial hypothesis test, verdict **DENIED**, 12 findings accepted.
+  Supersedes: the ~19 KB/session figure (actually 268 KB mean), the 81%-under-2KB figure
+  (72.4%), the absolute no-false-negatives claim (now per-tier), the `promptSource` version-drift
+  example (wrong), the "isSidechain on every record" claim (4 of 20 types), the thinking-block
+  size premise (97% signature), and the one-session-per-file assumption (17,659 duplicates).
+- 2026-08-13 [decide] turn-window fetch; per-tier guarantee; subagents indexed and folded in.
+- 2026-08-13 [research] stack measured on this machine: gjson 1.31 s vs stdlib 7.21 s vs jq
+  9.6 s over the full corpus; linear scan of the 36.5 MB stripped corpus ~35 ms; SQLite FTS5
+  verified working in pure Go. Measured the filtering funnel (1322 MB → 36.5 MB, 36×).
+- 2026-08-13 [decide] Go + gjson, no index, no database. **Supersedes** the per-tier
+  head/tail guarantee: linear scan makes truncation unnecessary, so nothing is truncated and
+  the default tier is declared in every response instead.
+- 2026-08-13 [decide] interactive mode is an fzf front-end (`--disabled` + `change:reload` +
+  `--preview`), not a custom TUI; Bubble Tea rejected but recorded as the fallback if
+  per-keystroke process start proves sticky.

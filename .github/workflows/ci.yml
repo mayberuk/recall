@@ -1,0 +1,161 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        # 1.24 is the floor go.mod declares; stable is whatever setup-go
+        # currently resolves that alias to, so this never needs a bump for a
+        # Go release this repo didn't ask for.
+        go: ['1.24', stable]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go${{ matrix.go }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go${{ matrix.go }}-
+      - run: go test -count=1 ./...
+      - run: go test -race -count=1 ./...
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go1.24-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go1.24-
+      - run: go test -count=1 -coverprofile=coverage.out ./...
+      - run: ./scripts/coverage-gate.sh coverage.out
+
+  # Runs on current Go rather than the go.mod floor. govulncheck reports standard
+  # library advisories against whichever toolchain runs it, and those are fixed by
+  # upgrading Go, not by changing this repository — scanning with the oldest
+  # supported release would report them forever. staticcheck likewise tracks
+  # current Go. Compatibility with the floor is the test matrix's job.
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-stable-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-stable-
+      - name: gofmt
+        run: |
+          fmt_out="$(gofmt -l .)"
+          if [ -n "$fmt_out" ]; then
+            echo "gofmt would reformat:" >&2
+            echo "$fmt_out" >&2
+            exit 1
+          fi
+      - run: go vet ./...
+      - name: staticcheck
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          staticcheck ./...
+      - name: go.mod / go.sum are tidy
+        run: go mod tidy -diff
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+      - run: ./scripts/deps-gate.sh
+
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go1.24-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go1.24-
+      - env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go build -o /tmp/recall-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/recall
+
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go1.24-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go1.24-
+      - name: micro-benchmarks vs. baseline (allocation regression only)
+        run: |
+          set -o pipefail
+          # 15 minutes is roughly 5x what this step takes on a dev machine.
+          # It exists to catch a hung run, not to police speed: bench-compare
+          # judges allocation counts, which are the same number on any
+          # machine, and that is the only thing this job fails on.
+          if ! timeout 900 make bench-compare; then
+            status=$?
+            if [ "$status" -eq 124 ]; then
+              echo "::error::bench-compare exceeded the 15-minute CI ceiling. That ceiling is deliberately loose because shared runners vary; a timeout here means a hang, not a performance regression." >&2
+            fi
+            exit "$status"
+          fi
