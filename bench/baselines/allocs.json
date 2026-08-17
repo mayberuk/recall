@@ -1,36 +1,60 @@
 {
-  "go": "go1.26.5",
+  "go": "go1.25.4",
   "note": "allocs_per_op is enforced; bytes_per_op is recorded but advisory, because the corpus root path is embedded in every turn and its length differs per machine",
   "samples": [
     {
       "name": "BenchmarkArchive/medium/cold",
       "size": "medium",
-      "allocs_per_op": 633944,
-      "bytes_per_op": 396343548
+      "allocs_per_op": 634047,
+      "bytes_per_op": 483386925
     },
     {
       "name": "BenchmarkArchive/medium/warm",
       "size": "medium",
-      "allocs_per_op": 816,
-      "bytes_per_op": 206616
+      "allocs_per_op": 889,
+      "bytes_per_op": 168036
     },
     {
       "name": "BenchmarkArchive/small/cold",
       "size": "small",
-      "allocs_per_op": 64310,
-      "bytes_per_op": 41572590
+      "allocs_per_op": 64390,
+      "bytes_per_op": 58330296
     },
     {
       "name": "BenchmarkArchive/small/warm",
       "size": "small",
-      "allocs_per_op": 392,
-      "bytes_per_op": 83864
+      "allocs_per_op": 436,
+      "bytes_per_op": 65475
+    },
+    {
+      "name": "BenchmarkLoad/medium/all-tiers",
+      "size": "medium",
+      "allocs_per_op": 95,
+      "bytes_per_op": 50743830
+    },
+    {
+      "name": "BenchmarkLoad/medium/conversation",
+      "size": "medium",
+      "allocs_per_op": 30,
+      "bytes_per_op": 8563542
+    },
+    {
+      "name": "BenchmarkLoad/small/all-tiers",
+      "size": "small",
+      "allocs_per_op": 57,
+      "bytes_per_op": 5107760
+    },
+    {
+      "name": "BenchmarkLoad/small/conversation",
+      "size": "small",
+      "allocs_per_op": 17,
+      "bytes_per_op": 861171
     },
     {
       "name": "BenchmarkRank/medium/collapse",
       "size": "medium",
       "allocs_per_op": 66,
-      "bytes_per_op": 6776084
+      "bytes_per_op": 6776064
     },
     {
       "name": "BenchmarkRank/medium/score",
@@ -48,115 +72,127 @@
       "name": "BenchmarkRank/small/score",
       "size": "small",
       "allocs_per_op": 460,
-      "bytes_per_op": 2280957
+      "bytes_per_op": 2280952
     },
     {
       "name": "BenchmarkSearch/medium/conjunction",
       "size": "medium",
-      "allocs_per_op": 108,
-      "bytes_per_op": 20188562
+      "allocs_per_op": 526,
+      "bytes_per_op": 28401481
     },
     {
       "name": "BenchmarkSearch/medium/miss",
       "size": "medium",
-      "allocs_per_op": 82,
-      "bytes_per_op": 15656
+      "allocs_per_op": 378,
+      "bytes_per_op": 114341
     },
     {
       "name": "BenchmarkSearch/medium/phrase",
       "size": "medium",
-      "allocs_per_op": 84,
-      "bytes_per_op": 108872
+      "allocs_per_op": 345,
+      "bytes_per_op": 210962
     },
     {
       "name": "BenchmarkSearch/medium/relaxed",
       "size": "medium",
-      "allocs_per_op": 85,
-      "bytes_per_op": 11544
+      "allocs_per_op": 273,
+      "bytes_per_op": 47006
+    },
+    {
+      "name": "BenchmarkSearch/medium/single-common-term",
+      "size": "medium",
+      "allocs_per_op": 476,
+      "bytes_per_op": 13386250
     },
     {
       "name": "BenchmarkSearch/medium/single-term",
       "size": "medium",
-      "allocs_per_op": 75,
-      "bytes_per_op": 10888
+      "allocs_per_op": 261,
+      "bytes_per_op": 46101
     },
     {
       "name": "BenchmarkSearch/medium/single-term-all-tiers",
       "size": "medium",
-      "allocs_per_op": 76,
-      "bytes_per_op": 13608
+      "allocs_per_op": 274,
+      "bytes_per_op": 75665
     },
     {
       "name": "BenchmarkSearch/small/conjunction",
       "size": "small",
-      "allocs_per_op": 60,
-      "bytes_per_op": 1427370
+      "allocs_per_op": 67,
+      "bytes_per_op": 1422306
     },
     {
       "name": "BenchmarkSearch/small/miss",
       "size": "small",
-      "allocs_per_op": 43,
-      "bytes_per_op": 14136
+      "allocs_per_op": 55,
+      "bytes_per_op": 9312
     },
     {
       "name": "BenchmarkSearch/small/phrase",
       "size": "small",
-      "allocs_per_op": 41,
-      "bytes_per_op": 21272
+      "allocs_per_op": 48,
+      "bytes_per_op": 16200
     },
     {
       "name": "BenchmarkSearch/small/relaxed",
       "size": "small",
-      "allocs_per_op": 46,
-      "bytes_per_op": 10032
+      "allocs_per_op": 53,
+      "bytes_per_op": 4976
+    },
+    {
+      "name": "BenchmarkSearch/small/single-common-term",
+      "size": "small",
+      "allocs_per_op": 56,
+      "bytes_per_op": 610530
     },
     {
       "name": "BenchmarkSearch/small/single-term",
       "size": "small",
-      "allocs_per_op": 36,
-      "bytes_per_op": 9368
+      "allocs_per_op": 43,
+      "bytes_per_op": 4296
     },
     {
       "name": "BenchmarkSearch/small/single-term-all-tiers",
       "size": "small",
-      "allocs_per_op": 37,
-      "bytes_per_op": 12088
+      "allocs_per_op": 44,
+      "bytes_per_op": 7016
     },
     {
       "name": "BenchmarkStrip/medium/cold",
       "size": "medium",
-      "allocs_per_op": 424803,
-      "bytes_per_op": 82423480
+      "allocs_per_op": 424801,
+      "bytes_per_op": 125039803
     },
     {
       "name": "BenchmarkStrip/medium/incremental",
       "size": "medium",
-      "allocs_per_op": 4225,
-      "bytes_per_op": 15332832
+      "allocs_per_op": 4227,
+      "bytes_per_op": 59355811
     },
     {
       "name": "BenchmarkStrip/small/cold",
       "size": "small",
-      "allocs_per_op": 42559,
-      "bytes_per_op": 11229921
+      "allocs_per_op": 42560,
+      "bytes_per_op": 24455414
     },
     {
       "name": "BenchmarkStrip/small/incremental",
       "size": "small",
-      "allocs_per_op": 295,
-      "bytes_per_op": 4513661
+      "allocs_per_op": 296,
+      "bytes_per_op": 17881072
     },
     {
       "name": "BenchmarkStripRecord/medium",
       "size": "medium",
       "allocs_per_op": 18,
-      "bytes_per_op": 2880
+      "bytes_per_op": 2832
     },
     {
       "name": "BenchmarkStripRecord/small",
       "size": "small",
       "allocs_per_op": 18,
-      "bytes_per_op": 2880
+      "bytes_per_op": 2832
     }
   ]
 }

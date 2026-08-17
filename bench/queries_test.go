@@ -32,8 +32,8 @@ func TestEveryQueryMeasuresWhatItNames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Queries: %v", err)
 	}
-	if len(queries) != 5 {
-		t.Fatalf("Queries returned %d shapes, want the five the report is built from", len(queries))
+	if len(queries) != 6 {
+		t.Fatalf("Queries returned %d shapes, want the six the report is built from", len(queries))
 	}
 
 	for _, q := range queries {

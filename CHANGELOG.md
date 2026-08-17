@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+
+- Searching is several times faster, with no change to what any command returns. Against 1.0.0 on
+  the machine the work started on: a conversation-tier `find` 88 → 30 ms, an all-tier `find`
+  460 → 93 ms, and a miss over every tier 549 → 113 ms. The corpus is still scanned in full and
+  there is still no index; the Decisions section of `docs/design.md` records what each change was
+  measured at.
+- The archive format is now `recall-turns-3`, which adds per-tier block offsets so a decode can
+  run on every core. **The first run after upgrading rebuilds the archive**, as it does for any
+  format change. Until it has, `--no-update` refuses with exit 3 and points at `recall doctor`
+  rather than reading the old format wrongly; an ordinary run needs nothing from you. Downgrading
+  rebuilds in the same way.
+
 ## [1.0.0] - 2026-08-15
 
 First release.

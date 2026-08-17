@@ -73,30 +73,88 @@ func plan(src source, marks, mtimes map[string]int64) action {
 }
 
 // list finds every transcript under the root, in a fixed order.
+//
+// The root's immediate children are walked concurrently, because this is most of
+// what a run with nothing to do costs: over the author's store the walk was
+// 9.2 ms of a 13.4 ms no-op refresh, against 1.4 ms for statting the 1,199 files
+// it finds. The store is one directory per checkout and a sequential walk waits
+// on each of the 141 of them in turn.
+//
+// Sorting at the end is what makes the order a function of the corpus rather than
+// of which goroutine finished first — and the archive's bytes depend on that
+// order.
 func (s *Store) list() ([]source, error) {
+	tops, err := os.ReadDir(s.root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fperr.New(fperr.CorpusUnreadable, "cannot read %s: %v", s.root, err)
+	}
+
+	found := make([][]source, len(tops))
+	errs := make([]error, len(tops))
+	eachIndex(len(tops), s.parallelism(), func(i int) {
+		found[i], errs[i] = s.walkTop(tops[i])
+	})
+
 	var out []source
-	err := filepath.WalkDir(s.root, func(path string, d fs.DirEntry, err error) error {
+	for i := range found {
+		if errs[i] != nil {
+			return nil, fperr.New(fperr.CorpusUnreadable, "cannot walk %s: %v",
+				filepath.Join(s.root, tops[i].Name()), errs[i])
+		}
+		out = append(out, found[i]...)
+	}
+	slices.SortFunc(out, func(a, b source) int { return strings.Compare(a.rel, b.rel) })
+	return out, nil
+}
+
+// walkTop collects the transcripts under one immediate child of the root. Depth
+// is not assumed: the store puts one directory per checkout directly under the
+// root, but a nested layout still walks whole, just without the concurrency.
+func (s *Store) walkTop(top fs.DirEntry) ([]source, error) {
+	path := filepath.Join(s.root, top.Name())
+	if !top.IsDir() {
+		if filepath.Ext(path) != ".jsonl" {
+			return nil, nil
+		}
+		src, err := s.sourceAt(path)
 		if err != nil {
+			return nil, err
+		}
+		return []source{src}, nil
+	}
+
+	var out []source
+	err := filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			// A directory that vanished mid-walk is a session store being cleaned
+			// up underneath us, not a corrupt one.
 			if os.IsNotExist(err) {
 				return nil
 			}
 			return err
 		}
-		if d.IsDir() || filepath.Ext(path) != ".jsonl" {
+		if d.IsDir() || filepath.Ext(p) != ".jsonl" {
 			return nil
 		}
-		rel, rerr := filepath.Rel(s.root, path)
-		if rerr != nil {
-			return rerr
+		src, serr := s.sourceAt(p)
+		if serr != nil {
+			return serr
 		}
-		out = append(out, source{rel: filepath.ToSlash(rel), path: path})
+		out = append(out, src)
 		return nil
 	})
+	return out, err
+}
+
+func (s *Store) sourceAt(path string) (source, error) {
+	rel, err := filepath.Rel(s.root, path)
 	if err != nil {
-		return nil, fperr.New(fperr.CorpusUnreadable, "cannot walk %s: %v", s.root, err)
+		return source{}, err
 	}
-	slices.SortFunc(out, func(a, b source) int { return strings.Compare(a.rel, b.rel) })
-	return out, nil
+	return source{rel: filepath.ToSlash(rel), path: path}, nil
 }
 
 // Update brings the archive level with the corpus and reports what it did.
@@ -239,19 +297,33 @@ func (s *Store) sidecarAgrees() bool {
 	return true
 }
 
+// stat sizes and dates every source. It is the whole cost of a run that finds
+// nothing to do: one stat per transcript, 1,195 of them over the author's store,
+// and each one waits on the filesystem rather than on a core. Issuing them
+// concurrently took that pass from 17 ms to about 3 ms.
+//
+// The results are folded back in source order, which is what keeps Vanished,
+// Unreadable and the file the coverage line names a function of the corpus rather
+// than of how the scheduler happened to interleave.
 func (s *Store) stat(sources []source, res *Result) ([]source, Coverage) {
+	infos := make([]os.FileInfo, len(sources))
+	errs := make([]error, len(sources))
+	eachIndex(len(sources), s.parallelism(), func(i int) {
+		infos[i], errs[i] = os.Stat(sources[i].path)
+	})
+
 	var cov Coverage
 	live := make([]source, 0, len(sources))
-	for _, src := range sources {
-		fi, err := os.Stat(src.path)
-		if err != nil {
-			if os.IsNotExist(err) {
+	for i, src := range sources {
+		if errs[i] != nil {
+			if os.IsNotExist(errs[i]) {
 				res.Vanished = append(res.Vanished, src.rel)
 				continue
 			}
 			res.Unreadable = append(res.Unreadable, src.rel)
 			continue
 		}
+		fi := infos[i]
 		src.size = fi.Size()
 		src.mtime = fi.ModTime().UnixNano()
 		if cov.LiveFrom.IsZero() || fi.ModTime().Before(cov.LiveFrom) {
@@ -316,37 +388,58 @@ type readResult struct {
 // what keeps the archive bytes a function of the corpus and not of scheduling.
 func (s *Store) readAll(jobs []job) []readResult {
 	out := make([]readResult, len(jobs))
-	n := s.workers
-	if n <= 0 {
-		n = min(runtime.GOMAXPROCS(0), 8)
+	eachIndex(len(jobs), s.parallelism(), func(i int) {
+		out[i] = s.read(jobs[i].src, jobs[i].from)
+	})
+	return out
+}
+
+// parallelism is how many goroutines a whole-corpus pass gets.
+//
+// It used to be capped at eight. Nothing recorded why, and the measurement says
+// the cap was costing 17%: a cold build of the author's 1.3 GB store took 1.169 s
+// on eight workers and 0.972 s on sixteen, which is GOMAXPROCS on that machine.
+// Past GOMAXPROCS it stops mattering — 24 and 32 workers measured 1.011 s and
+// 0.956 s, inside the run-to-run spread — because the pass is roughly half
+// syscall-wait and half parsing, so it saturates the cores rather than the disk.
+func (s *Store) parallelism() int {
+	if s.workers > 0 {
+		return s.workers
 	}
-	if n > len(jobs) {
-		n = len(jobs)
+	return runtime.GOMAXPROCS(0)
+}
+
+// eachIndex runs fn for every index below n on at most workers goroutines. fn
+// must write only to its own index: the caller reads the results back in index
+// order, which is what makes a parallel pass produce the same archive a serial
+// one would.
+func eachIndex(n, workers int, fn func(i int)) {
+	if workers > n {
+		workers = n
 	}
-	if n <= 1 {
-		for i, j := range jobs {
-			out[i] = s.read(j.src, j.from)
+	if workers <= 1 {
+		for i := range n {
+			fn(i)
 		}
-		return out
+		return
 	}
 
 	next := make(chan int)
 	var wg sync.WaitGroup
-	for range n {
+	for range workers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for i := range next {
-				out[i] = s.read(jobs[i].src, jobs[i].from)
+				fn(i)
 			}
 		}()
 	}
-	for i := range jobs {
+	for i := range n {
 		next <- i
 	}
 	close(next)
 	wg.Wait()
-	return out
 }
 
 // read strips one file from offset. The returned mark is where the next run

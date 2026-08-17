@@ -53,6 +53,12 @@ func Queries(g Generated, tiers []schema.Tier) ([]Query, error) {
 	}
 	return []Query{
 		{Name: "single-term", Text: single.Term, Tiers: tiers, Hits: true},
+		// A planted needle is an opaque token, and every one of them happens to
+		// open with a byte the corpus almost never uses. That flatters any matcher
+		// anchored on the first byte and hides the cost of one anchored elsewhere,
+		// so the commonest query shape of all — one ordinary word — is measured
+		// against an ordinary word.
+		{Name: "single-common-term", Text: commonA, Tiers: tiers, Hits: true},
 		{Name: "conjunction", Text: commonA + " " + commonB, Tiers: tiers, AllTerms: true, Hits: true},
 		// Two needles planted in different sessions cannot both sit in one turn,
 		// so this is the relaxation path: the best turn carries one of the two.

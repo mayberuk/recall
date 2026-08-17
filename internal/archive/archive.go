@@ -62,6 +62,16 @@ type Store struct {
 	// from outside the package by timing alone.
 	onListed  func(paths []string)
 	onStatted func(path string)
+
+	// turnHints is the per-tier turn count the last metadata read or write
+	// reported, so a search can size its decode without parsing the metadata a
+	// second time. Parsing it is 1.5 ms over the author's store: it carries an
+	// mtime and an oldest-record timestamp for every one of 1,199 source files.
+	//
+	// Staleness cannot be a correctness problem here, which is why this is a hint
+	// and not a cache of the metadata itself. The number only ever becomes a slice
+	// capacity, so a wrong one costs a regrowth.
+	turnHints map[schema.Tier]int
 }
 
 // Dir is where the archive lives: $RECALL_HOME, else $XDG_DATA_HOME/recall,

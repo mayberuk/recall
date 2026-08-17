@@ -85,7 +85,7 @@ func (s *Store) Verify() (Report, error) {
 			rep.Problems = append(rep.Problems, fmt.Sprintf("%s tier is %d bytes, metadata says %d", tier, tr.Bytes, want.Bytes))
 		}
 
-		entries, clean := s.readTier(tier)
+		entries, clean := s.readTier(tier, want.Turns, nil)
 		tr.Turns = len(entries)
 		for _, e := range entries {
 			sessions[e.Session] = true

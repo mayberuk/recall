@@ -12,7 +12,15 @@ import (
 // readBuffer is sized so an ordinary record is one ReadSlice with no copy.
 // Transcript files reach hundreds of megabytes, so the reader streams and never
 // holds more than one record plus this buffer.
-const readBuffer = 256 << 10
+//
+// One megabyte, because a cold pass over the author's 1.39 GB store measured
+// 1.024 s at 256 KB and 0.888 s here — 13% of the whole build, spent on read
+// syscalls. Four megabytes measured 0.914 s, no better, so the gain is in
+// cutting the syscall count rather than in the buffer being large. Nothing is
+// wasted on small files either: the smallest transcript in that store is over
+// 256 KB and the median is 391 KB, and only as many buffers exist as there are
+// workers.
+const readBuffer = 1 << 20
 
 // Line is one physical line of a JSONL file.
 //

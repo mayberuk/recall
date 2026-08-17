@@ -8,8 +8,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/mayberuk/recall/internal/atomicfile"
 	"github.com/mayberuk/recall/internal/fperr"
@@ -19,7 +23,37 @@ import (
 // tierMagic heads every tier file. A file whose framing this build does not
 // understand is rebuilt rather than misread: the frames carry no self-describing
 // structure, so a stale format decodes into plausible nonsense.
-const tierMagic = "recall-turns-2\n"
+const tierMagic = "recall-turns-3\n"
+
+// blockBytes is roughly how much framed text one block covers. Varint frames are
+// not splittable, so a decoder cannot start anywhere; a block offset is a place
+// the encoder promises it may.
+//
+// The size trades header bytes and per-block setup against how evenly the blocks
+// divide among however many cores the reader turns out to have — a number the
+// encoder does not know. At 256 KB the largest tier here cuts into ~300 blocks,
+// which balances across anything from 2 to 64 workers and costs about 1.5 KB of
+// header.
+//
+// Tests shrink it to reach the concurrent decode on a fixture small enough to
+// build in a test, which is the only way that path runs under `go test`; nothing
+// else writes it.
+var blockBytes = 256 << 10
+
+// block is one place a decoder may start, and how many turns it will find from
+// there. Offsets are held relative to the end of the header while encoding,
+// because the header's own length depends on how many blocks there turn out to
+// be, and absolutised by openFrames.
+//
+// These live in the tier file rather than beside it in meta.json. A tier that
+// gained no turns is not rewritten while meta.json is rewritten on every update,
+// so the two files go out of step by design, and an offset table that can
+// disagree with the bytes it describes is the one failure this has to rule out.
+// In the file it travels with them.
+type block struct {
+	off   int
+	turns int
+}
 
 // tierFiles is the partition, and the order the files are written and read in.
 var tierFiles = []schema.Tier{schema.TierConversation, schema.TierInvocation, schema.TierResult}
@@ -125,7 +159,27 @@ func (s *Store) loadMeta() (meta, bool) {
 	if err := json.Unmarshal(data, &m); err != nil || m.Version != formatVersion {
 		return meta{}, false
 	}
+	s.recordTurnHints(m)
 	return m, true
+}
+
+func (s *Store) recordTurnHints(m meta) {
+	if s.turnHints == nil {
+		s.turnHints = make(map[schema.Tier]int, len(tierFiles))
+	}
+	for _, tier := range tierFiles {
+		s.turnHints[tier] = m.Tiers[string(tier)].Turns
+	}
+}
+
+// turnHint sizes one tier's decode. It reads the metadata only if no pass has
+// reported the counts yet, which for `find` is the --no-update case: the refresh
+// reads the metadata anyway, and parsing it twice cost 1.5 ms of a search.
+func (s *Store) turnHint(tier schema.Tier) int {
+	if s.turnHints == nil {
+		s.loadMeta()
+	}
+	return s.turnHints[tier]
 }
 
 func appendStr(dst []byte, s string) []byte {
@@ -150,17 +204,61 @@ func appendEntry(dst []byte, e entry) []byte {
 // frames walks a tier file's records. Every length is bounds-checked against the
 // buffer, so a truncated or corrupt file stops the walk instead of reading past
 // the end or inventing a field.
+//
+// A decoded field is a view into b, not a copy of it. That is worth 340,000
+// allocations on a conversation-tier load and 1.7 million on all three, but it
+// makes b immutable for as long as any turn decoded from it is reachable: b is
+// one whole tier file read in a single call, nothing writes to it after the read,
+// and the strings pointing into it keep it alive. A caller that mutated b, or
+// handed it to something that might, would rewrite turns already returned.
 type frames struct {
 	b   []byte
 	off int
 	bad bool
 }
 
-func openFrames(b []byte) (*frames, bool) {
+// openFrames reads the magic and the block table, and returns a walk positioned
+// at the first turn.
+//
+// Every offset is checked here — in bounds, strictly increasing, and starting
+// exactly where the header ends — so a decoder that trusts the table has already
+// had it validated against the file's own length. What that cannot prove is that
+// an offset lands on a frame boundary, and decodeBlocks holds each block to
+// finishing exactly on the next one for that.
+func openFrames(b []byte) (*frames, []block, bool) {
 	if len(b) < len(tierMagic) || string(b[:len(tierMagic)]) != tierMagic {
-		return nil, false
+		return nil, nil, false
 	}
-	return &frames{b: b, off: len(tierMagic)}, true
+	f := &frames{b: b, off: len(tierMagic)}
+
+	// Two bytes is the least a block can be framed in, so a count past that is a
+	// corrupt header and not an allocation to attempt.
+	n := f.num()
+	if f.bad || n > len(b) {
+		return nil, nil, false
+	}
+	marks := make([]block, n)
+	for i := range marks {
+		marks[i] = block{off: f.num(), turns: f.num()}
+		if f.bad {
+			return nil, nil, false
+		}
+	}
+
+	head := f.off
+	for i := range marks {
+		marks[i].off += head
+		if marks[i].turns <= 0 || marks[i].off >= len(b) {
+			return nil, nil, false
+		}
+		if i > 0 && marks[i].off <= marks[i-1].off {
+			return nil, nil, false
+		}
+	}
+	if len(marks) > 0 && marks[0].off != head {
+		return nil, nil, false
+	}
+	return f, marks, true
 }
 
 func (f *frames) done() bool { return f.bad || f.off >= len(f.b) }
@@ -173,7 +271,13 @@ func (f *frames) str() string {
 	}
 	start := f.off + w
 	f.off = start + int(n)
-	return string(f.b[start:f.off])
+	if n == 0 {
+		// unsafe.String needs a pointer it may not form at the end of the buffer,
+		// and an empty field is common: Agent and Branch are absent more often
+		// than they are present.
+		return ""
+	}
+	return unsafe.String(&f.b[start], int(n))
 }
 
 func (f *frames) num() int {
@@ -186,18 +290,25 @@ func (f *frames) num() int {
 	return int(n)
 }
 
+// turn decodes one turn's fields in place. Filling a slot the caller already
+// owns is what lets a tier load append into a preallocated slice without a
+// second copy of every field.
+func (f *frames) turn(t *schema.Turn) {
+	t.Session = f.str()
+	t.UUID = f.str()
+	t.TS = f.str()
+	t.Tier = schema.Tier(f.str())
+	t.Author = schema.Author(f.str())
+	t.Agent = f.str()
+	t.Repo = f.str()
+	t.Branch = f.str()
+	t.CWD = f.str()
+	t.Text = f.str()
+}
+
 func (f *frames) next() (entry, bool) {
 	var e entry
-	e.Session = f.str()
-	e.UUID = f.str()
-	e.TS = f.str()
-	e.Tier = schema.Tier(f.str())
-	e.Author = schema.Author(f.str())
-	e.Agent = f.str()
-	e.Repo = f.str()
-	e.Branch = f.str()
-	e.CWD = f.str()
-	e.Text = f.str()
+	f.turn(&e.Turn)
 	e.Seq = f.num()
 	return e, !f.bad
 }
@@ -206,83 +317,236 @@ func (f *frames) next() (entry, bool) {
 // or one that ends mid-record; the entries recovered before that point are still
 // returned, because the archive outlives the raw files and discarding it on a
 // read error would destroy the only copy.
-func (s *Store) readTier(tier schema.Tier) ([]entry, bool) {
-	data, err := os.ReadFile(s.TierPath(tier))
+//
+// hint is how many turns the file is expected to hold, for sizing the result. It
+// is a hint and not a contract — a wrong answer costs a regrowth and nothing
+// else — so a caller without the metadata to hand passes zero. Verify is what
+// holds the recorded count to account.
+func (s *Store) readTier(tier schema.Tier, hint int, dst []entry) ([]entry, bool) {
+	if dst == nil {
+		dst = make([]entry, 0, hint)
+	}
+	data, err := readWhole(s.TierPath(tier))
 	if err != nil {
-		return nil, os.IsNotExist(err)
+		return dst, os.IsNotExist(err)
 	}
-	f, ok := openFrames(data)
+	f, _, ok := openFrames(data)
 	if !ok {
-		return nil, false
+		return dst, false
 	}
-	var out []entry
 	for !f.done() {
-		e, good := f.next()
-		if !good {
-			return out, false
+		dst = append(dst, entry{})
+		e := &dst[len(dst)-1]
+		f.turn(&e.Turn)
+		e.Seq = f.num()
+		if f.bad {
+			return dst[:len(dst)-1], false
 		}
-		out = append(out, e)
 	}
-	return out, true
+	return dst, true
 }
 
-func (s *Store) loadEntries() ([]entry, bool) {
-	var out []entry
-	clean := true
-	for _, tier := range tierFiles {
-		entries, ok := s.readTier(tier)
-		out = append(out, entries...)
-		clean = clean && ok
+// decodeBlocks decodes every block at once, each worker taking a contiguous run
+// of them and filling the slice of dst those blocks were promised to cover.
+//
+// ok is false when the table did not describe the file, and then nothing has been
+// decoded: dst comes back at the length it arrived with, for the caller to walk
+// sequentially instead. Two things have to hold for a block, and neither is a
+// property of the offsets alone — it yields exactly the turns it declared, and it
+// ends exactly where the next block starts. An offset landing mid-frame fails one
+// of them, which is what keeps a table that disagrees with the bytes from
+// decoding into plausible nonsense.
+func decodeBlocks(b []byte, marks []block, dst []schema.Turn) ([]schema.Turn, bool) {
+	workers := min(runtime.GOMAXPROCS(0), len(marks))
+	if workers < 2 {
+		return dst, false
 	}
-	return out, clean
+
+	total := 0
+	for _, m := range marks {
+		total += m.turns
+	}
+	base := len(dst)
+	if cap(dst)-base >= total {
+		dst = dst[:base+total]
+	} else {
+		grown := make([]schema.Turn, base+total)
+		copy(grown, dst)
+		dst = grown
+	}
+
+	// Each worker takes a contiguous run of blocks, so where its turns land is a
+	// running total over the runs already handed out — which is why no per-block
+	// index table is built: this load is on the path of every search, and a slice
+	// per tier is a slice a search pays for.
+	var failed atomic.Bool
+	per := len(marks) / workers
+	var wg sync.WaitGroup
+	for w, at := 0, base; w < workers; w++ {
+		lo := w * per
+		hi := lo + per
+		if w == workers-1 {
+			hi = len(marks)
+		}
+		start := at
+		for i := lo; i < hi; i++ {
+			at += marks[i].turns
+		}
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i, slot := lo, start; i < hi; i++ {
+				end := len(b)
+				if i+1 < len(marks) {
+					end = marks[i+1].off
+				}
+				// Bounding the walk at the next block's offset is what stops a
+				// block that under-reads from running on into turns another worker
+				// is already writing.
+				f := frames{b: b[:end], off: marks[i].off}
+				turns := dst[slot : slot+marks[i].turns]
+				slot += marks[i].turns
+				for k := range turns {
+					if f.done() {
+						failed.Store(true)
+						return
+					}
+					f.turn(&turns[k])
+					f.num()
+					if f.bad {
+						failed.Store(true)
+						return
+					}
+				}
+				if f.off != end {
+					failed.Store(true)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+
+	if failed.Load() {
+		return dst[:base], false
+	}
+	return dst, true
+}
+
+// readTurns decodes one tier file straight into turns. The update path needs the
+// per-record sequence number and a search does not, so a search never pays for
+// the entry-to-Turn copy that carrying it would cost.
+func (s *Store) readTurns(tier schema.Tier, dst []schema.Turn) ([]schema.Turn, bool) {
+	data, err := readWhole(s.TierPath(tier))
+	if err != nil {
+		return dst, os.IsNotExist(err)
+	}
+	f, marks, ok := openFrames(data)
+	if !ok {
+		return dst, false
+	}
+	if out, ok := decodeBlocks(data, marks, dst); ok {
+		return out, true
+	}
+	for !f.done() {
+		dst = append(dst, schema.Turn{})
+		f.turn(&dst[len(dst)-1])
+		f.num() // Seq, framed per turn and unread here
+		if f.bad {
+			return dst[:len(dst)-1], false
+		}
+	}
+	return dst, true
 }
 
 // Turns reads the archived turns of the given tiers, or every tier when none is
 // named. A default `find` asks for the conversation tier alone and so never
 // touches the result tier, which is four fifths of the bytes.
+//
+// The returned turns hold strings that point into the tier files' buffers rather
+// than copies of them; see frames for what that makes those buffers.
 func (s *Store) Turns(want ...schema.Tier) ([]schema.Turn, error) {
 	sel := want
 	if len(sel) == 0 {
 		sel = tierFiles
 	}
-	var turns []schema.Turn
+	files := make([]schema.Tier, 0, len(tierFiles))
 	read := map[schema.Tier]bool{}
+	total := 0
 	for _, tier := range sel {
 		file := fileFor(tier)
 		if read[file] {
 			continue
 		}
 		read[file] = true
-		entries, ok := s.readTier(file)
+		files = append(files, file)
+		total += s.turnHint(file)
+	}
+
+	turns := make([]schema.Turn, 0, total)
+	for _, file := range files {
+		var ok bool
+		turns, ok = s.readTurns(file, turns)
 		if !ok {
 			return nil, fperr.New(fperr.BadArchive,
 				"archive at %s did not read cleanly; run `recall doctor`", s.TierPath(file))
 		}
-		for _, e := range entries {
-			turns = append(turns, e.Turn)
-		}
 	}
 	return turns, nil
+}
+
+func (s *Store) loadEntries() ([]entry, bool) {
+	total := 0
+	for _, tier := range tierFiles {
+		total += s.turnHint(tier)
+	}
+	out := make([]entry, 0, total)
+	clean := true
+	for _, tier := range tierFiles {
+		var ok bool
+		out, ok = s.readTier(tier, 0, out)
+		clean = clean && ok
+	}
+	return out, clean
 }
 
 // encodeTier frames one tier's turns. Adjacent identical records are dropped: a
 // record with no uuid has no dedup key, and re-reading its file would otherwise
 // add a second copy on every whole-file pass.
 func encodeTier(entries []entry) ([]byte, int) {
-	out := make([]byte, 0, len(tierMagic)+64*len(entries))
-	out = append(out, tierMagic...)
+	body := make([]byte, 0, 64*len(entries))
+	var marks []block
 	var scratch, prev []byte
-	kept := 0
+	kept, open := 0, block{}
 	for _, e := range entries {
 		scratch = appendEntry(scratch[:0], e)
 		if bytes.Equal(prev, scratch) {
 			continue
 		}
-		out = append(out, scratch...)
+		// A block closes before the turn that would overrun it rather than after,
+		// so every offset recorded is the first byte of a frame.
+		if open.turns > 0 && len(body)-open.off >= blockBytes {
+			marks = append(marks, open)
+			open = block{off: len(body)}
+		}
+		body = append(body, scratch...)
 		prev = append(prev[:0], scratch...)
 		kept++
+		open.turns++
 	}
-	return out, kept
+	if open.turns > 0 {
+		marks = append(marks, open)
+	}
+
+	out := make([]byte, 0, len(tierMagic)+binary.MaxVarintLen64*(1+2*len(marks))+len(body))
+	out = append(out, tierMagic...)
+	out = binary.AppendUvarint(out, uint64(len(marks)))
+	for _, m := range marks {
+		out = binary.AppendUvarint(out, uint64(m.off))
+		out = binary.AppendUvarint(out, uint64(m.turns))
+	}
+	return append(out, body...), kept
 }
 
 func checksum(b []byte) string {
@@ -312,6 +576,7 @@ func (s *Store) writeMeta(m meta) error {
 	if err := atomicfile.WriteJSON(s.MetaPath(), m); err != nil {
 		return fperr.New(fperr.AtomicWriteFailed, "cannot write the archive metadata: %v", err)
 	}
+	s.recordTurnHints(m)
 	return nil
 }
 

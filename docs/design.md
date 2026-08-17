@@ -234,11 +234,11 @@ turns around each hit rather than whole sessions.
 - **The no-false-negatives guarantee is absolute over whatever tier was searched, and the tool
   always declares which** — superseded the earlier head/tail compromise once linear-scan cost
   was measured. Nothing is truncated: the conversation tier is scanned in full by default
-  (~35 ms) and tool output is scanned in full when asked (~355 ms). What makes the default safe
+  (~30 ms end to end) and tool output is scanned in full when asked (~93 ms). What makes the default safe
   is the declaration, present in every response: `conversation only — tool output NOT searched
   (--results)`. Rejected: head/tail truncation (indexes only ~19% of tool-result *text* by
   bytes, a real false-negative surface with nothing compensating for it), full-tier default
-  (fine one-shot, sticky at ~355 ms per keystroke in interactive mode).
+  (fine one-shot, sticky at ~93 ms per keystroke in interactive mode).
 - **Subagent transcripts are indexed, labelled, and folded into the parent session** — 947 of
   1,077 files are subagent work, and a decision reached inside an Explore or review agent is
   part of what happened. Hits are tagged agent-authored via `isSidechain`; the session is the
@@ -285,6 +285,153 @@ turns around each hit rather than whole sessions.
   boundary (what the archive covers); measured divergence between them reaches **55 days**,
   because a resumed session's mtime is far newer than its content. A file that disappears
   between the archiver's `stat` and its `open` is reported, never silently skipped.
+- **A decoded turn is a view into the tier file, not a copy of it** — `frames.str` returns
+  `unsafe.String` into the buffer the whole tier file was read into. Copying every field cost
+  53,116 allocations on a conversation-tier load of the medium generated corpus and 266,171 on
+  all three; views cost 9 and 23. Load went 2.085 ms → 1.023 ms and 15.889 ms → 6.367 ms
+  (benchstat, n=10, p=0.000), and on the real 280 MB archive 13 ms → 6 ms and 80 ms → 38 ms.
+  The price is an invariant: a tier file is immutable while any turn decoded from it is
+  reachable. Two tests hold it up — one asserts the fields really do point inside the buffer,
+  because otherwise the rule would cost nothing and protect nothing, and one asserts that ten
+  times the turns do not cost ten times the allocations.
+- **The substring scan anchors on the needle's rarest byte, unless that is the first one** —
+  `bytes.Index` scans for the first byte, and an English word starting with a common letter
+  false-positives on nearly every word in the text, paying a verification compare each time.
+  A static byte-frequency table picks the anchor. Worth −7% on one ordinary word, −35% on two
+  with `--all-terms`, and −7% geomean over every measured query shape. The fallback is not
+  optional: forcing the hand-rolled loop on needles whose first byte is already rare cost up to
+  11%, because `bytes.Index` is assembly and Go is a slower route to the same answer. Rejected:
+  cgo or SIMD via a dependency (both ruled out by the stack), and a rarity *threshold* rather
+  than the simple first-byte test (no measurement supported a specific value, and an unmeasured
+  knob is worse than none).
+- **A whole-corpus pass gets GOMAXPROCS goroutines, and the corpus walk is one of them** — the
+  worker cap was `min(GOMAXPROCS, 8)` with no recorded reason and it cost 17%: a cold build of
+  the 1.39 GB store measured 1.169 s on eight workers against 0.972 s on sixteen, and 24 and 32
+  measured 1.011 s and 0.956 s, so GOMAXPROCS is where it flattens. Separately, the pass that
+  finds *nothing* to do was 13.4 ms and 9.2 ms of that was `filepath.WalkDir` waiting on 141
+  per-checkout directories in turn; walking the root's children concurrently took the walk to
+  3.8 ms and the refresh to 7.9 ms. Statting the 1,199 files it finds was never the cost — 1.67 ms
+  sequential, 1.2 ms parallel, because a warm `stat` is nearly free.
+- **The JSONL read buffer is 1 MB** — 1.39 GB through 256 KB buffers is roughly 5,700 read
+  syscalls, and the same cold build measured 1.024 s at 256 KB against 0.888 s at 1 MB. Four
+  megabytes measured 0.914 s, so the win is in the syscall count and not the buffer size.
+  Nothing is wasted on small files: the smallest transcript in that store is over 256 KB, the
+  median is 391 KB, and only as many buffers exist as there are workers.
+- **The scan is sharded across cores, and the merge rule is the whole argument** — the corpus is
+  cut into contiguous ranges scanned concurrently. What makes that safe is that the walk is
+  order-independent in what it finishes with: `need` only rises and every rise clears the hits
+  below it, so a completed walk holds exactly the turns carrying the most terms anything in its
+  range carried, plus the turns one level below when the query was unsatisfiable. So the global
+  answer is the best of the local bests — a range that reached the best contributes its hits and
+  its below, a range that reached exactly one less contributes its hits to the below because that
+  is the same level, and anything further down contributed nothing a single pass would have kept.
+  Ranges are contiguous rather than strided so they concatenate back into input order and so a
+  session's adjacent turns mostly stay whole. Real 280 MB store, median of 20: conversation-tier
+  `find` 73.9 → 30.3 ms, all tiers 374.8 → 108.0 ms, one ordinary word 70.8 → 37.7 ms, all
+  p<0.0001. The cost is allocations, which roughly double: every range sets up its own matcher
+  scratch, session map and hit slice. That is per-range and not per-turn, and a test holds it to
+  that by comparing two corpus sizes at a fixed range count. Rejected: striding turns across
+  workers (destroys input order and splits every session).
+- **The zero-result survey is sharded too, once its byte budget stops being spent during the
+  walk** — the survey explains a miss, and after the scan was sharded it was the most expensive
+  thing the tool did: 183 ms against 30 ms for a hit, and the only operation over a gate in the
+  acceptance contract. It was left sequential on the grounds that its byte budget and its
+  candidate cap are both order-dependent; both turned out not to hold. The budget is
+  order-dependent only while a walk is spending it, so it is settled first instead — `fold`
+  preserves every byte position, so a turn's folded length is its text length and a prefix sum
+  over lengths picks the same turn the sequential walk stopped at, without folding or tokenizing
+  anything. The ranges are cut from that prefix. The cap was profiled rather than reasoned about
+  and reached 70 candidates against a limit of 4,096 on the worst real shape, a five-letter term
+  over all three tiers where the shared-prefix family rule is loosest; it now bounds each range
+  rather than their union, which is a memory bound and not an answer. What is left is two
+  accumulating walks whose merge is addition. End to end against the pre-optimization binary,
+  interleaved, 20 runs a shape: a conversation-tier miss 182.7 → 45.2 ms and an all-tier miss
+  538.8 → 144.7 ms, both p=0.00005. Rejected: keeping the per-range cap and truncating the merged
+  candidate set back to 4,096 (map iteration order decides what survives, which reintroduces
+  exactly the machine-dependent answer this design exists to avoid).
+- **`fold` lowercases eight bytes to the add, in Go rather than in assembly** — profiling put
+  87% of a scan inside it, because the substring search it feeds is standard-library assembly
+  and this was a byte at a time. Lifting `'A'` to a lane's top bit with one add and doing the
+  same one past `'Z'` with another leaves that bit set exactly where the lane held an upper-case
+  letter, and shifting it down two is the `0x20` that lowercases it; both addends apply only to
+  lanes already known to be ASCII, so the largest lane value is `0xbe` and nothing carries into
+  its neighbour. Real corpus, back to back: the hit scan 6.10 → 3.40 ms on the conversation tier
+  and 31.30 → 17.43 ms across all of them, both −44%. Per byte, 3.6–6.2× on ASCII and 1.9–2.3×
+  when a rune turns up every fiftieth byte. Correctness is agreement with the byte-at-a-time
+  version, which stays in the test file as the reference: named boundaries, a non-ASCII byte at
+  every offset across a word, the runes whose lowercase form is a different width, invalid
+  UTF-8, and 47.7 million fuzz executions with no disagreement. Accepted cost: 7–9% slower on
+  text that is mostly accented Latin, which is about 1.4% end to end for such a corpus. Three
+  arrangements were measured trying to remove that and all three landed in the same place, so it
+  is the two-loop shape and not a fixable detail; text with no ASCII at all never enters the
+  wide loop.
+- **Sixteen bytes at a time in NEON and SSE2, over that Go path as the fallback** — kept on a
+  weaker case than anything else here, which is worth stating rather than dressing up. It
+  delivers what was predicted per byte: 2.02× over the eight-byte Go loop on ASCII and 1.94× on
+  real turn text. End to end it is −6.8% on an all-tier `find` (p=0.00015) and nothing
+  measurable on the other two shapes tested (p=0.50 and p=1.00), because the scan is only 3.4 ms
+  of a 25 ms search. It pays at all because the corpus is 99.17% ASCII and averages 328 bytes
+  between runes, so a sixteen-byte block is nearly always whole. A four-refusal budget stops it
+  hurting accented prose, where being refused a block means a rune within sixteen bytes and the
+  call was paid for nothing: that shape returns from 0.89–0.91× to 0.99–1.05× against the Go
+  path, and ASCII loses nothing. Correctness is agreement with the byte-at-a-time reference —
+  42.0 M fuzz executions on arm64, 27.7 M on amd64, no disagreement — plus a test holding the
+  routine to whole blocks, no write past what it reports, and stopping at a block holding a rune,
+  since the lane adds are only valid where the top bit starts clear. The amd64 path's speed was
+  measured on real silicon later; see "The amd64 SSE2 fold is kept" below. Rejected: runtime CPU
+  feature detection for AVX2, which would
+  need `golang.org/x/sys/cpu` and break the one-dependency rule for a wider register on a step
+  already down to 3.4 ms.
+- **Tier files are read by concurrent `ReadAt` into one buffer, not by `mmap`** — the tool
+  results alone are 197 MB, and copying them out of the page cache through one byte stream is
+  one core's memory bandwidth against sixteen. Over the real 282 MB archive, warm, median of
+  nine: `os.ReadFile` 16.9 ms, `syscall.Mmap` plus the page faults a sequential decode has to
+  take 9.0 ms, parallel `ReadAt` 5.6 ms. Archive load goes 5 → 3 ms for the conversation tier
+  and 34 → 21 ms for all of them. Concurrent `ReadAt` is safe by contract: the offset is an
+  argument rather than the file's position, so the goroutines share nothing to race over.
+  Rejected: `mmap`, which the performance plan had called for — it wins half as much and costs a
+  build-tag split, a mapping that can never be unmapped while any zero-copy string points into
+  it, a truncated-file SIGBUS as a new failure mode, and a hand-written Windows path that CI
+  builds but never runs.
+- **Per-tier block offsets live in the tier file's header, not in `meta.json`** — the offsets let
+  a decode run on every core, and they are framing metadata rather than the search index this
+  project has ruled out: an offset says where a decoder may start, not where a term occurs, so it
+  cannot disagree with the corpus about what the corpus contains. Where it *can* disagree is with
+  the bytes, and that is why the obvious placement beside them in `meta.json` was not used:
+  `writeTier` re-frames a tier only when that tier gained turns,
+  while `meta.json` is rewritten on every update, so the two are designed to go out of step. In
+  the file the table travels with the bytes it describes. `tierMagic` goes to `recall-turns-3`,
+  which is the upgrade path — an unrecognised framing already rebuilds. Offsets are validated, not
+  trusted: in bounds, increasing, starting at the body, and then each block must decode exactly the
+  turns it declared and stop exactly on the next block's offset, so a table that disagrees with the
+  file is refused whole and the sequential walk runs instead. Worth −8.7% and −11.1% on an all-tier
+  `find` in two independent runs (p ≤ 0.0001) on linux/amd64, where all-tier load is 20 ms of 65.
+  Rejected: `meta.json` per the plan (can go stale against the file it describes); a checksum over
+  the table (hashing 111 MB costs more than the 15 ms it would protect).
+- **The amd64 SSE2 fold is kept, and no longer as an exception** — it shipped on the assumption
+  that SSE2 behaves like NEON, which was untestable on the machine that wrote it. Measured on a
+  Ryzen 7 5700X3D: 2.58× the word-at-a-time path on 20 KB of ASCII, and end to end it wins four
+  query shapes of five — all tiers −8.3% (p=0.0001), conversation miss −5.1% (p=0.00005), all-tier
+  miss −4.3% (p=0.00015), one ordinary word −4.1% (p=0.026), conversation hit −3.0% (not
+  significant). NEON on arm64 wins one of three, so the half of the assembly surface that was
+  doubted now carries more evidence than the half that was not. An A/A control — the same binary
+  against a copy of itself — puts the method's noise floor at ±1.5% with every p above 0.49.
+  Correctness on amd64 is now native rather than emulated: 13.4 M `FuzzFold` executions against
+  the byte-at-a-time reference.
+- **A caseless SIMD substring matcher was dropped on the profile, not attempted** — it was the
+  endgame of the performance plan, on the premise that case-folding and substring search were each
+  about half the scan and one fused pass would collapse both. Re-profiled at the end of wave 2,
+  the substring search is **1.4%** of the scan profile because `bytes.Index` is standard-library
+  assembly, and `fold` is 81% of the hit path but already vectorized. The remaining cost is
+  elsewhere: the miss path's `tokenize` is 36.4% of the profile, two and a half times the whole hit
+  path. Rejected on this project's own rule that a change must beat the baseline significantly, and
+  recorded because the estimate that justified it — "66 → ~8 ms" — was written when the scan cost
+  66 ms and the whole conversation-tier `find` now costs 21 ms.
+- **No profile-guided optimization** — measured and dropped, not skipped. Over 40 interleaved
+  runs of each binary against the real archive, a PGO build was −0.36% on a conversation-tier
+  find (p=0.95) and +0.52% on an all-tier find (p=0.65), with identical minima. The hot paths are
+  syscalls, `memmove`, gjson parsing and tight byte loops, none of which are what PGO's
+  devirtualization and cross-edge inlining improve. Revisit only if the hot profile changes shape.
 
 ## Stack
 
@@ -297,8 +444,8 @@ Chosen on measurement taken on this machine 2026-08-13, not on precedent alone.
   parsing lazily — extracting only the requested path and skipping the rest — not by being a
   faster language; eager Go and eager C are only 1.3× apart.
   This is the first plugin here with an external dependency; accepted for a 5.5× strip pass.
-- **No index and no database.** After stripping, the searchable corpus is 36.5 MB; a linear
-  scan is ~35 ms, and even all tiers in full is ~355 ms. An index would add a staleness class,
+- **No index and no database.** After stripping, the conversation tier is 47.8 MB of a 1.52 GB
+  store; a search over it costs ~30 ms end to end, and every tier in full ~93 ms. An index would add a staleness class,
   a corruption class, and a way to silently under-report — all for a problem the corpus is too
   small to have. Rejected: SQLite FTS5 via `modernc.org/sqlite` v1.56.0, which was **verified
   working** (pure Go, SQLite 3.53.3, FTS5 with porter stemming, `bm25()`, `snippet()`,
@@ -308,7 +455,7 @@ Chosen on measurement taken on this machine 2026-08-13, not on precedent alone.
 - **Search covers the conversation tier by default; tool output is opt-in** — and every
   response states it: `conversation only — tool output NOT searched (--results)`. The
   dealbreaker was a *silent* false negative; an explicit declaration of what was not searched
-  is honest coverage, not a silent miss. Rejected: full-tier default (~355 ms is fine one-shot
+  is honest coverage, not a silent miss. Rejected: full-tier default (~93 ms is fine one-shot
   but sticky per keystroke interactively), head/tail truncation (a real false-negative surface
   with no compensating honesty).
 - **Interactive mode is an fzf front-end, not a custom TUI** — a shell function over the same

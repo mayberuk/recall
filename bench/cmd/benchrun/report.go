@@ -41,6 +41,9 @@ func report(args []string) error {
 	if err != nil {
 		return err
 	}
+	// The report tabulates per-corpus figures, so a benchmark measured against
+	// neither corpus has no row to sit in.
+	micro = bench.Judgeable(micro)
 
 	fmt.Fprintln(os.Stderr, "benchrun: timing the scenarios")
 	scenarios, err := measureScenarios(root, generated, *runs)

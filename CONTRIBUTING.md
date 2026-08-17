@@ -9,16 +9,46 @@ go build -o ~/.local/bin/recall ./cmd/recall
 Static binary, `CGO_ENABLED=0`, Go 1.24, one external dependency
 (`github.com/tidwall/gjson`).
 
+`internal/scan` carries hand-written assembly for arm64 and amd64 — the case-folding pass, in
+`fold_arm64.s` and `fold_amd64.s`. Neither is required: `fold_noasm.go` supplies a stub for any
+other architecture, and the pure-Go word-at-a-time loop in `fold.go` runs underneath on all of
+them, so `linux/386` and `linux/riscv64` build and pass with no vector code at all.
+
+If you touch either file, the bar is the byte-at-a-time reference in `fold_test.go`, not the
+Go implementation beside it — holding assembly to a faster Go version lets a shared misreading
+pass both. Run `go test -fuzz=FuzzFold ./internal/scan` for a minute, and again under
+`GOARCH=amd64` if you have a way to execute it (on Apple silicon, Rosetta will).
+
 ## Test
 
-Four tiers, in the order you'd normally reach for them:
+Five tiers, in the order you'd normally reach for them:
 
 | Tier | Command | When |
 |---|---|---|
 | Unit | `go test ./...` | Every change. Table-driven, deterministic, no real corpus needed. |
 | Race | `go test -race ./...` | Before any change touching concurrency (the archive writer, the corpus walk). |
 | Integration | `go test ./tests/integration/...` | Before any change that crosses package boundaries (strip → repo → archive → cmd). |
+| Differential | `go test ./tests/differential/` | Before any change meant to be output-neutral, which every optimization is. |
 | Acceptance | `./tests/acceptance/run.sh` | Before claiming a behavioral change is done. Runs the acceptance cases against a built binary and writes raw evidence to `logs/acceptance/<case>/` for a separate judge to grade — the runner never grades its own output. |
+
+The differential tier is the one that catches an optimization that changed an answer. It builds
+the binary from the `perf-baseline` tag in a throwaway git worktree, runs both binaries over a
+fixed query battery against one generated corpus, and requires byte-identical stdout, stderr and
+exit code. Set `RECALL_DIFF_BASE` to compare against a different ref; if the ref does not resolve
+— a shallow clone has no tags — the harness skips and says so.
+
+The harness sets `RECALL_TURNS_PER_RANGE` for the binary under test, which lowers how many turns a
+goroutine's slice of the corpus must hold to be worth cutting. Its corpus is deliberately small
+enough to build twice per run, and without that override it is under the threshold — every case
+would compare two single-pass scans and the concurrent path would go unrun. The baseline predates
+sharding, so it is left alone: its output is the single-pass answer by construction, and that is
+what the binary under test has to match.
+
+If you add a query shape to the matcher, add it to that battery. A battery case that agrees with
+the baseline because it never reaches your code is worse than no case at all, and every gap found
+so far was exactly that — including the harness itself never sharding, which went unnoticed
+through a whole wave of parallelism work. Prove a new case bites by breaking the code it covers
+and watching it fail.
 
 Before claiming a performance change, run it against the generated corpus CI uses:
 

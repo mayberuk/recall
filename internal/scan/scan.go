@@ -159,129 +159,24 @@ func Search(turns []schema.Turn, q Query) Result {
 		res.Match.Excluded = append(res.Match.Excluded, m.exclude[i].text)
 	}
 
-	sessions := make(map[string]*sessionState, 128)
-	lastID := ""
-	var last *sessionState
-
-	// need is the term count a turn must carry to be kept, and it only ever
-	// rises: the first turn carrying more terms than anything before it makes
-	// every hit collected so far obsolete in one comparison, which is what
-	// turns "best partial match" into a single pass rather than one pass per
-	// relaxation level.
-	need := 1
-	if m.strict {
-		need = len(m.terms)
-	}
-	carried := make([]bool, len(m.terms))
-
-	// A long turn carries more query terms by carrying more words, so keeping
-	// only the very best count hands a degraded query to whatever injected
-	// 20 KB summary happened to contain everything. One level of slack lets the
-	// short, dense turns compete, and ranking then decides between them. It
-	// applies only when the query could not be met in full: a satisfiable query
-	// keeps the strict all-terms result it has always had.
-	var below []schema.Hit
-	belowCarried := make([]bool, len(m.terms))
-
-	var buf []byte
-	var spans []span
-	for i := range turns {
-		turn := &turns[i]
-		res.Turns++
-
-		if turn.Session != lastID || last == nil {
-			lastID = turn.Session
-			if last = sessions[lastID]; last == nil {
-				last = &sessionState{}
-				sessions[lastID] = last
-			}
-		}
-		if turn.Tier == schema.TierConversation {
-			last.conversation++
-		}
-		if !want[turn.Tier] || (q.Keep != nil && !q.Keep(turn)) {
-			continue
-		}
-		last.scanned = true
-		res.TurnsScanned++
-
-		if len(m.terms) == 0 {
-			continue
-		}
-		buf = fold(buf, turn.Text)
-		if m.excluded(buf) {
-			continue
-		}
-		found := mp.mark(buf, need-1)
-		if found < need-1 || found == 0 {
-			continue
-		}
-		switch {
-		case found == need-1:
-			// Held in case the query turns out not to be satisfiable at all.
-			// Once one turn has carried every term it never will be used, and
-			// holding it costs a hit per occurrence for the rest of the walk.
-			if need < len(m.terms) {
-				below = appendHits(below, turn, mp, &spans, buf, found, belowCarried)
-			}
-			continue
-		case found > need:
-			if found == need+1 {
-				below, belowCarried = res.Hits, carried
-			} else {
-				below, belowCarried = nil, make([]bool, len(m.terms))
-			}
-			need = found
-			res.Hits, carried = nil, make([]bool, len(m.terms))
-			if need == len(m.terms) {
-				below, belowCarried = nil, make([]bool, len(m.terms))
-			}
-		}
-		for j := range carried {
-			carried[j] = carried[j] || m.carried[j]
-		}
-		spans = mp.collect(spans, buf)
-		for _, s := range spans {
-			res.Hits = append(res.Hits, schema.Hit{
-				Session: turn.Session,
-				UUID:    turn.UUID,
-				TS:      turn.TS,
-				Tier:    turn.Tier,
-				Author:  turn.Author,
-				Agent:   turn.Agent,
-				Repo:    turn.Repo,
-				Branch:  turn.Branch,
-				Offset:  s.offset,
-				Length:  s.length,
-				Match:   s.kind,
-				Terms:   found,
-				Text:    turn.Text,
-			})
-		}
-	}
+	// The corpus is cut into contiguous ranges scanned concurrently. What makes
+	// that safe is that the walk is order-independent in what it finishes with:
+	// see mergeShards for the argument and the rule that folds the ranges back
+	// into one answer.
+	found := mergeShards(scanShards(turns, q, mp, want), &res, len(m.terms))
+	res.Hits = found.hits
 
 	if len(res.Hits) > 0 {
-		res.Match.Required = need
-		if need < len(m.terms) && len(below) > 0 {
-			res.Hits = append(res.Hits, below...)
-			res.Match.Required = need - 1
-			for j := range carried {
-				carried[j] = carried[j] || belowCarried[j]
-			}
+		res.Match.Required = found.need
+		if found.need < len(m.terms) && len(found.below) > 0 {
+			res.Hits = append(res.Hits, found.below...)
+			res.Match.Required = found.need - 1
+			or(found.carried, found.belowCarried)
 		}
-		for j := range carried {
-			if carried[j] {
+		for j := range found.carried {
+			if found.carried[j] {
 				res.Match.Carried = append(res.Match.Carried, m.terms[j].text)
 			}
-		}
-	}
-
-	res.Sessions = len(sessions)
-	res.TurnsBySession = make(map[string]int, len(sessions))
-	for id, state := range sessions {
-		res.TurnsBySession[id] = state.conversation
-		if state.scanned {
-			res.SessionsScanned++
 		}
 	}
 
