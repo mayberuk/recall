@@ -46,7 +46,8 @@ Plus `recall doctor` for archive integrity and `recall guide` — read that one 
 ## Worked examples
 
 Every command below is a real invocation against a real archive, with its real output pasted
-in (home-directory paths shortened to `~`) — except the first, which demonstrates the headline
+in (home-directory paths shortened to `~`, and one project directory name replaced where a real
+one would have named a private checkout) — except the first, which demonstrates the headline
 claim above and is labeled as a generated demo corpus rather than a real session history.
 
 **`recall find <query>` across two checkouts of one repo** — the property recall exists for,
@@ -149,17 +150,18 @@ oldest first
 ```
 $ recall doctor
 archive    ~/.local/share/recall
-integrity  ok · 181835 turns · 138 sessions · 276.2 MB
-  conversation  ok     ·   46.2 MB ·   36121 turns
-  invocation    ok     ·   37.1 MB ·   73740 turns
-  result        ok     ·  193.0 MB ·   71974 turns
+integrity  ok · 191835 turns · 143 sessions · 287.2 MB
+  conversation  ok     ·   47.8 MB ·   37493 turns
+  invocation    ok     ·   39.3 MB ·   78062 turns
+  result        ok     ·  200.0 MB ·   76280 turns
   meta.json     ok
   cursor        ok
-coverage   live to 2026-06-10 · content 2026-06-10 to 2026-08-15
-corpus     ~/.claude/projects · 1169 files · 0 vanished · 0 unreadable
-records    315245 lines · 0 malformed · 0 untyped · 0 of an unknown type
+coverage   live to 2026-06-10 · content 2026-06-10 to 2026-08-17
+skew       55 days on «a-project-directory»/ea9730d2-7357-42e5-be9f-642211a7d47f.jsonl
+corpus     ~/.claude/projects · 1212 files · 0 vanished · 0 unreadable
+records    333721 lines · 0 malformed · 0 untyped · 0 of an unknown type
 dedup      10141 records collapsed on (session, uuid) at ingest
-authorship 4431 human-shaped · 1158 typed · 172 command-args
+authorship 4612 human-shaped · 1225 typed · 179 command-args
 ```
 
 **`recall guide`** — the on-ramp; run this before anything else:
@@ -184,12 +186,18 @@ flags, machine output forms, exit codes, and worked recipes.)
 ## Why there is no index
 
 Of everything Claude Code writes to disk, the actual conversation — the words you and the
-assistant typed — is **2.8%**. The rest is tool output stored twice, opaque thinking-block
-signatures, and attachments. Scanning that 2.8% takes about **35 milliseconds**, so there is
-nothing for an index to speed up that a linear scan does not already do fast enough, and no
-staleness or corruption class for it to introduce. See `docs/design.md` for the full measurement
-and the rejected alternatives, including a working SQLite FTS5 prototype that lost on those
-grounds, not on capability.
+assistant typed — is about **3%**: 47.8 MB of a 1.52 GB session store. The rest is tool output
+stored twice, opaque thinking-block signatures, and attachments.
+
+Searching that 3% costs **30 ms end to end**, process start to rendered output, over a store of
+143 sessions and 192,000 turns. Searching *everything*, tool output included, costs 93 ms.
+So there is nothing for an index to speed up that a linear scan does not already do fast enough,
+and no staleness or corruption class for it to introduce.
+
+See `docs/design.md` for the full measurement and the rejected alternatives, including a working
+SQLite FTS5 prototype that lost on those grounds and not on capability. `bench/RESULTS.md` carries
+the reproducible numbers, taken against a corpus generated from a seed rather than anyone's
+private store.
 
 ## For agents
 

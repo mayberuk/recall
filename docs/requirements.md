@@ -73,8 +73,8 @@ Three questions were open when this brief was written and were settled during de
 - **No-false-negatives is absolute per tier searched, not absolute everywhere, and the tool
   always declares which tier ran.** The alternative — an exhaustive read every query, or a
   derived structure provably current — was rejected once linear-scan cost was measured: the
-  conversation tier scans in full by default (~35 ms) and tool output scans in full when asked
-  (~355 ms), so nothing needs truncating and the honest-coverage form costs nothing extra.
+  conversation tier scans in full by default (~30 ms end to end) and tool output scans in full
+  when asked (~93 ms), so nothing needs truncating and the honest-coverage form costs nothing extra.
 - **Cheap-in-context wins; conclusion recovery is served by a bounded turn window, not the whole
   session.** A hit returns the turns around it rather than the full conversation — mean session
   size is ~67K tokens and the largest is ~550K, so an unbounded fetch would violate the token

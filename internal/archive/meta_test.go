@@ -65,9 +65,9 @@ func TestFramesStopAtATruncatedSeqVarint(t *testing.T) {
 	// Seq is a multi-byte varint at 300 (0xac 0x02); cut the buffer so only the
 	// first continuation byte survives.
 	cut := len(full) - 1
-	b := append([]byte(tierMagic), full[:cut]...)
+	b := framed(full[:cut], 1)
 
-	f, ok := openFrames(b)
+	f, _, ok := openFrames(b)
 	if !ok {
 		t.Fatal("openFrames rejected a well-formed header")
 	}
@@ -112,7 +112,7 @@ func TestEncodeTierDropsAnAdjacentByteIdenticalEntry(t *testing.T) {
 	if kept != 1 {
 		t.Fatalf("encodeTier kept %d entries for two identical ones, want 1", kept)
 	}
-	frames, ok := openFrames(blob)
+	frames, _, ok := openFrames(blob)
 	if !ok {
 		t.Fatal("openFrames rejected the encoded blob")
 	}

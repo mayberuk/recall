@@ -2,6 +2,7 @@ package archive
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"maps"
 	"os"
@@ -13,6 +14,16 @@ import (
 	"github.com/mayberuk/recall/internal/jsonl"
 	"github.com/mayberuk/recall/internal/schema"
 )
+
+// framed wraps hand-built frame bytes in a tier file's header, declaring one
+// block over them, so a test that needs a deliberately malformed body does not
+// have to restate the header format to get there.
+func framed(body []byte, turns int) []byte {
+	b := append([]byte(tierMagic), 1)
+	b = binary.AppendUvarint(b, 0)
+	b = binary.AppendUvarint(b, uint64(turns))
+	return append(b, body...)
+}
 
 // stubStrip stands in for internal/strip, which is built in parallel with this
 // package. It keeps the two properties the archive depends on: one record can

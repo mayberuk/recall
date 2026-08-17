@@ -1,7 +1,7 @@
 # recall benchmark results
 
-Apple M4 Max · 16 cores · darwin/arm64 · go1.26.5  
-measured 2026-08-15T16:51:40Z
+AMD Ryzen 7 5700X3D 8-Core Processor · 16 cores · linux/amd64 · go1.25.4  
+measured 2026-08-17T17:47:49Z
 
 Every number here comes from a corpus generated from a seed (`internal/corpusgen`),
 never from a session store, so a run on another machine measures the same bytes.
@@ -11,8 +11,8 @@ Small is about 5 MB and Medium about 50 MB of transcript.
 
 | corpus | files | on disk | turns | conversation | invocation | result |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| small | 17 | 5.3 MB | 2,972 | 594 turns / 0.6 MB | 1,189 turns / 0.3 MB | 1,189 turns / 2.9 MB |
-| medium | 56 | 52.6 MB | 29,564 | 5,898 turns / 6.0 MB | 11,833 turns / 3.1 MB | 11,833 turns / 28.5 MB |
+| small | 17 | 5.1 MB | 2,972 | 594 turns / 0.6 MB | 1,189 turns / 0.3 MB | 1,189 turns / 2.9 MB |
+| medium | 56 | 51.4 MB | 29,564 | 5,898 turns / 6.0 MB | 11,833 turns / 3.1 MB | 11,833 turns / 28.5 MB |
 
 The generator reproduces the tier shape of a working session store: conversation, invocation and result hold 20.0% / 40.5% / 39.5% of the turns and 16.1% / 8.4% / 75.5% of the bytes in the store internal/corpusgen measured, and every corpus above lands within 2% of each of those six shares.
 Tool output is most of a real store and none of what recall searches by default,
@@ -31,32 +31,38 @@ real store does.
 
 | benchmark | corpus | ns/op | B/op | allocs/op |
 | --- | --- | ---: | ---: | ---: |
-| `BenchmarkArchive/medium/cold` | medium | 129,964,849 | 396,335,848 | 633,942 |
-| `BenchmarkArchive/medium/warm` | medium | 870,926 | 206,984 | 816 |
-| `BenchmarkArchive/small/cold` | small | 40,874,311 | 41,572,743 | 64,310 |
-| `BenchmarkArchive/small/warm` | small | 482,671 | 83,864 | 392 |
-| `BenchmarkRank/medium/collapse` | medium | 2,170,666 | 6,776,073 | 66 |
-| `BenchmarkRank/medium/score` | medium | 8,764,090 | 23,167,417 | 1,813 |
-| `BenchmarkRank/small/collapse` | small | 211,258 | 745,632 | 10 |
-| `BenchmarkRank/small/score` | small | 877,215 | 2,280,958 | 460 |
-| `BenchmarkSearch/medium/conjunction` | medium | 11,430,997 | 20,188,618 | 108 |
-| `BenchmarkSearch/medium/miss` | medium | 13,540,008 | 15,656 | 82 |
-| `BenchmarkSearch/medium/phrase` | medium | 4,552,486 | 108,872 | 84 |
-| `BenchmarkSearch/medium/relaxed` | medium | 3,211,376 | 11,544 | 85 |
-| `BenchmarkSearch/medium/single-term` | medium | 3,184,699 | 10,888 | 75 |
-| `BenchmarkSearch/medium/single-term-all-tiers` | medium | 19,516,945 | 13,608 | 76 |
-| `BenchmarkSearch/small/conjunction` | small | 1,024,313 | 1,427,372 | 60 |
-| `BenchmarkSearch/small/miss` | small | 1,352,936 | 14,136 | 43 |
-| `BenchmarkSearch/small/phrase` | small | 375,143 | 21,272 | 41 |
-| `BenchmarkSearch/small/relaxed` | small | 310,998 | 10,032 | 46 |
-| `BenchmarkSearch/small/single-term` | small | 294,393 | 9,369 | 36 |
-| `BenchmarkSearch/small/single-term-all-tiers` | small | 1,776,036 | 12,088 | 37 |
-| `BenchmarkStrip/medium/cold` | medium | 138,077,969 | 82,422,946 | 424,798 |
-| `BenchmarkStrip/medium/incremental` | medium | 3,300,416 | 15,332,864 | 4,225 |
-| `BenchmarkStrip/small/cold` | small | 14,599,607 | 11,229,885 | 42,559 |
-| `BenchmarkStrip/small/incremental` | small | 668,504 | 4,513,655 | 295 |
-| `BenchmarkStripRecord/medium` | medium | 4,155 | 2,880 | 18 |
-| `BenchmarkStripRecord/small` | small | 4,262 | 2,880 | 18 |
+| `BenchmarkArchive/medium/cold` | medium | 184,522,870 | 484,460,856 | 634,059 |
+| `BenchmarkArchive/medium/warm` | medium | 468,363 | 169,441 | 889 |
+| `BenchmarkArchive/small/cold` | small | 24,545,152 | 58,331,183 | 64,400 |
+| `BenchmarkArchive/small/warm` | small | 250,183 | 65,719 | 436 |
+| `BenchmarkLoad/medium/all-tiers` | medium | 5,089,920 | 50,768,414 | 95 |
+| `BenchmarkLoad/medium/conversation` | medium | 1,157,816 | 8,571,725 | 30 |
+| `BenchmarkLoad/small/all-tiers` | small | 1,218,554 | 5,107,765 | 57 |
+| `BenchmarkLoad/small/conversation` | small | 272,415 | 861,179 | 17 |
+| `BenchmarkRank/medium/collapse` | medium | 3,335,265 | 6,776,064 | 66 |
+| `BenchmarkRank/medium/score` | medium | 13,888,000 | 23,167,416 | 1,813 |
+| `BenchmarkRank/small/collapse` | small | 340,201 | 745,633 | 10 |
+| `BenchmarkRank/small/score` | small | 1,381,277 | 2,280,952 | 460 |
+| `BenchmarkSearch/medium/conjunction` | medium | 3,118,230 | 28,401,484 | 526 |
+| `BenchmarkSearch/medium/miss` | medium | 2,351,503 | 114,342 | 378 |
+| `BenchmarkSearch/medium/phrase` | medium | 498,625 | 210,961 | 345 |
+| `BenchmarkSearch/medium/relaxed` | medium | 369,648 | 47,004 | 273 |
+| `BenchmarkSearch/medium/single-common-term` | medium | 1,558,231 | 13,386,254 | 476 |
+| `BenchmarkSearch/medium/single-term` | medium | 350,064 | 46,088 | 261 |
+| `BenchmarkSearch/medium/single-term-all-tiers` | medium | 855,941 | 75,665 | 274 |
+| `BenchmarkSearch/small/conjunction` | small | 754,334 | 1,422,309 | 67 |
+| `BenchmarkSearch/small/miss` | small | 1,305,773 | 9,312 | 55 |
+| `BenchmarkSearch/small/phrase` | small | 250,323 | 16,200 | 48 |
+| `BenchmarkSearch/small/relaxed` | small | 136,769 | 4,976 | 53 |
+| `BenchmarkSearch/small/single-common-term` | small | 409,083 | 610,528 | 56 |
+| `BenchmarkSearch/small/single-term` | small | 127,476 | 4,296 | 43 |
+| `BenchmarkSearch/small/single-term-all-tiers` | small | 459,885 | 7,016 | 44 |
+| `BenchmarkStrip/medium/cold` | medium | 204,458,543 | 125,512,808 | 424,801 |
+| `BenchmarkStrip/medium/incremental` | medium | 10,863,335 | 59,360,324 | 4,229 |
+| `BenchmarkStrip/small/cold` | small | 21,283,028 | 24,455,329 | 42,560 |
+| `BenchmarkStrip/small/incremental` | small | 2,646,019 | 17,881,121 | 297 |
+| `BenchmarkStripRecord/medium` | medium | 6,221 | 2,848 | 18 |
+| `BenchmarkStripRecord/small` | small | 6,184 | 2,832 | 18 |
 
 ## Scenarios
 
@@ -66,59 +72,59 @@ are wall clock, the size of the answer, and the memory the process reached.
 
 | scenario | corpus | wall clock | output bytes | peak RSS |
 | --- | --- | ---: | ---: | ---: |
-| `recall find bare` | small | 13.1 ms | 438 | 7.9 MB |
-| `recall find --all` | small | 9.5 ms | 440 | 8.1 MB |
-| `recall find --results` | small | 12.6 ms | 404 | 15.2 MB |
-| `recall find --tools` | small | 13.6 ms | 448 | 10.4 MB |
-| `recall find --brief` | small | 10.8 ms | 338 | 7.9 MB |
-| `recall find --json` | small | 9.2 ms | 1,427 | 8.0 MB |
-| `recall find --format jsonl` | small | 9.7 ms | 919 | 8.0 MB |
-| `recall find --ids` | small | 10.0 ms | 37 | 7.9 MB |
-| `recall find --all-terms` | small | 9.5 ms | 438 | 8.0 MB |
-| `recall find --not` | small | 8.8 ms | 488 | 7.9 MB |
-| `recall find --since` | small | 8.9 ms | 491 | 7.9 MB |
-| `recall find --author` | small | 9.1 ms | 491 | 8.0 MB |
-| `recall find --repo` | small | 9.7 ms | 438 | 8.1 MB |
-| `recall find --limit` | small | 9.2 ms | 438 | 7.9 MB |
-| `recall turns bare` | small | 9.2 ms | 498 | 7.9 MB |
-| `recall turns --budget` | small | 12.6 ms | 498 | 7.9 MB |
-| `recall turns --brief` | small | 9.0 ms | 326 | 8.0 MB |
-| `recall show bare` | small | 8.9 ms | 8,124 | 7.9 MB |
-| `recall show --chars` | small | 9.3 ms | 2,406 | 7.8 MB |
-| `recall when` | small | 13.0 ms | 521 | 8.3 MB |
-| `recall doctor` | small | 56.2 ms | 923 | 33.1 MB |
-| `recall guide` | small | 7.8 ms | 3,444 | 4.6 MB |
-| `recall find bare` | medium | 13.9 ms | 439 | 27.9 MB |
-| `recall find --all` | medium | 15.6 ms | 441 | 27.9 MB |
-| `recall find --results` | medium | 42.3 ms | 402 | 97.7 MB |
-| `recall find --tools` | medium | 22.6 ms | 449 | 46.8 MB |
-| `recall find --brief` | medium | 22.0 ms | 338 | 28.0 MB |
-| `recall find --json` | medium | 13.2 ms | 1,428 | 28.2 MB |
-| `recall find --format jsonl` | medium | 13.0 ms | 916 | 28.0 MB |
-| `recall find --ids` | medium | 12.7 ms | 37 | 28.0 MB |
-| `recall find --all-terms` | medium | 12.8 ms | 439 | 28.1 MB |
-| `recall find --not` | medium | 13.3 ms | 489 | 28.0 MB |
-| `recall find --since` | medium | 13.1 ms | 492 | 28.0 MB |
-| `recall find --author` | medium | 12.8 ms | 492 | 27.9 MB |
-| `recall find --repo` | medium | 13.2 ms | 439 | 28.0 MB |
-| `recall find --limit` | medium | 13.4 ms | 439 | 28.0 MB |
-| `recall turns bare` | medium | 12.9 ms | 499 | 27.8 MB |
-| `recall turns --budget` | medium | 13.2 ms | 499 | 27.9 MB |
-| `recall turns --brief` | medium | 12.8 ms | 326 | 27.8 MB |
-| `recall show bare` | medium | 12.8 ms | 8,158 | 27.8 MB |
-| `recall show --chars` | medium | 12.7 ms | 2,409 | 27.8 MB |
-| `recall when` | medium | 14.1 ms | 522 | 27.9 MB |
-| `recall doctor` | medium | 205.6 ms | 926 | 263.9 MB |
-| `recall guide` | medium | 10.1 ms | 3,444 | 4.8 MB |
+| `recall find bare` | small | 2.9 ms | 438 | 120.7 MB |
+| `recall find --all` | small | 2.8 ms | 440 | 120.7 MB |
+| `recall find --results` | small | 5.3 ms | 404 | 120.7 MB |
+| `recall find --tools` | small | 3.5 ms | 448 | 120.7 MB |
+| `recall find --brief` | small | 3.0 ms | 338 | 120.7 MB |
+| `recall find --json` | small | 3.0 ms | 1,375 | 120.7 MB |
+| `recall find --format jsonl` | small | 3.0 ms | 919 | 120.7 MB |
+| `recall find --ids` | small | 2.9 ms | 37 | 120.7 MB |
+| `recall find --all-terms` | small | 3.0 ms | 438 | 120.7 MB |
+| `recall find --not` | small | 3.0 ms | 488 | 120.7 MB |
+| `recall find --since` | small | 2.8 ms | 491 | 120.7 MB |
+| `recall find --author` | small | 2.9 ms | 491 | 120.7 MB |
+| `recall find --repo` | small | 3.0 ms | 438 | 120.7 MB |
+| `recall find --limit` | small | 2.9 ms | 438 | 120.7 MB |
+| `recall turns bare` | small | 2.8 ms | 498 | 120.7 MB |
+| `recall turns --budget` | small | 2.9 ms | 498 | 120.7 MB |
+| `recall turns --brief` | small | 3.0 ms | 326 | 120.7 MB |
+| `recall show bare` | small | 3.0 ms | 8,124 | 120.7 MB |
+| `recall show --chars` | small | 2.7 ms | 2,406 | 120.7 MB |
+| `recall when` | small | 2.9 ms | 521 | 120.7 MB |
+| `recall doctor` | small | 40.1 ms | 791 | 120.7 MB |
+| `recall guide` | small | 1.8 ms | 3,444 | 120.7 MB |
+| `recall find bare` | medium | 7.0 ms | 439 | 120.7 MB |
+| `recall find --all` | medium | 7.2 ms | 441 | 120.7 MB |
+| `recall find --results` | medium | 15.5 ms | 402 | 120.7 MB |
+| `recall find --tools` | medium | 13.2 ms | 449 | 120.7 MB |
+| `recall find --brief` | medium | 7.7 ms | 338 | 120.7 MB |
+| `recall find --json` | medium | 7.4 ms | 1,376 | 120.7 MB |
+| `recall find --format jsonl` | medium | 7.4 ms | 916 | 120.7 MB |
+| `recall find --ids` | medium | 7.3 ms | 37 | 120.7 MB |
+| `recall find --all-terms` | medium | 7.3 ms | 439 | 120.7 MB |
+| `recall find --not` | medium | 7.1 ms | 489 | 120.7 MB |
+| `recall find --since` | medium | 7.4 ms | 492 | 120.7 MB |
+| `recall find --author` | medium | 7.2 ms | 492 | 120.7 MB |
+| `recall find --repo` | medium | 7.0 ms | 439 | 120.7 MB |
+| `recall find --limit` | medium | 7.9 ms | 439 | 120.7 MB |
+| `recall turns bare` | medium | 7.2 ms | 499 | 120.7 MB |
+| `recall turns --budget` | medium | 7.1 ms | 499 | 120.7 MB |
+| `recall turns --brief` | medium | 6.9 ms | 326 | 120.7 MB |
+| `recall show bare` | medium | 6.6 ms | 8,158 | 120.7 MB |
+| `recall show --chars` | medium | 6.8 ms | 2,409 | 120.7 MB |
+| `recall when` | medium | 7.2 ms | 522 | 120.7 MB |
+| `recall doctor` | medium | 324.6 ms | 796 | 274.1 MB |
+| `recall guide` | medium | 1.8 ms | 3,444 | 120.7 MB |
 
 ## Gates
 
 | gate | corpus | limit | measured | verdict |
 | --- | --- | ---: | ---: | --- |
-| find, conversation tier | medium | 250.0 ms | 3.3 ms | within |
-| find, all tiers | medium | 1200.0 ms | 17.3 ms | within |
-| cold strip of the whole corpus | medium | 4000.0 ms | 144.6 ms | within |
-| cold archive build | medium | 4000.0 ms | 129.5 ms | within |
-| incremental archive update | medium | 1500.0 ms | 1.0 ms | within |
-| archive load, conversation tier | medium | 195.0 ms | 2.3 ms | within |
-| archive load, all tiers | medium | 890.0 ms | 10.8 ms | within |
+| find, conversation tier | medium | 250.0 ms | 0.4 ms | within |
+| find, all tiers | medium | 1200.0 ms | 1.1 ms | within |
+| cold strip of the whole corpus | medium | 4000.0 ms | 197.3 ms | within |
+| cold archive build | medium | 4000.0 ms | 231.7 ms | within |
+| incremental archive update | medium | 1500.0 ms | 0.5 ms | within |
+| archive load, conversation tier | medium | 195.0 ms | 0.9 ms | within |
+| archive load, all tiers | medium | 890.0 ms | 5.0 ms | within |

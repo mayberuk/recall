@@ -1,12 +1,10 @@
 package scan
 
 import (
-	"bytes"
 	"cmp"
 	"slices"
 	"strings"
 	"unicode"
-	"unicode/utf8"
 
 	"github.com/mayberuk/recall/internal/schema"
 )
@@ -69,6 +67,7 @@ type matcher struct {
 type term struct {
 	text   string // the term as typed, folded
 	needle []byte // what is searched: the stem when expanding, else the term
+	rare   int    // index into needle of the byte the corpus scan anchors on
 	phrase bool   // came from quotes, so it is never stemmed and never dropped
 }
 
@@ -103,6 +102,17 @@ func compile(q Query) matcher {
 	return m
 }
 
+// fork returns a matcher that can run on its own goroutine. Everything here is
+// read-only once compiled except carried, the scratch that mark rewrites for
+// every turn, so a fork is this struct plus a fresh scratch slice — cheaper than
+// compiling the query again, and it cannot drift from the original the way a
+// second compile could.
+func (m *matcher) fork() matcher {
+	f := *m
+	f.carried = make([]bool, len(m.terms))
+	return f
+}
+
 func newTerm(r rawTerm, exact bool) term {
 	var buf []byte
 	buf = fold(buf, r.text)
@@ -111,7 +121,8 @@ func newTerm(r rawTerm, exact bool) term {
 	if !exact && !r.quoted {
 		needle = stem(text)
 	}
-	return term{text: text, needle: []byte(needle), phrase: r.quoted}
+	n := []byte(needle)
+	return term{text: text, needle: n, rare: rarestByte(n), phrase: r.quoted}
 }
 
 // splitTerms cuts a query into terms on whitespace, except inside double
@@ -194,7 +205,7 @@ type span struct {
 func (m *matcher) mark(folded []byte, need int) int {
 	found := 0
 	for i := range m.terms {
-		m.carried[i] = bytes.Contains(folded, m.terms[i].needle)
+		m.carried[i] = m.terms[i].found(folded)
 		if m.carried[i] {
 			found++
 			continue
@@ -213,7 +224,7 @@ func (m *matcher) mark(folded []byte, need int) int {
 // before matching so a turn the caller ruled out costs one pass, not two.
 func (m matcher) excluded(folded []byte) bool {
 	for i := range m.exclude {
-		if bytes.Contains(folded, m.exclude[i].needle) {
+		if m.exclude[i].found(folded) {
 			return true
 		}
 	}
@@ -235,7 +246,7 @@ func (m *matcher) collect(dst []span, folded []byte) []span {
 		}
 		needle := m.terms[i].needle
 		for base := 0; base+len(needle) <= len(folded); {
-			at := bytes.Index(folded[base:], needle)
+			at := m.terms[i].index(folded[base:])
 			if at < 0 {
 				break
 			}
@@ -271,29 +282,4 @@ func classify(folded []byte, offset, length int) schema.MatchKind {
 	default:
 		return schema.MatchInside
 	}
-}
-
-// fold lowercases s into dst for case-insensitive matching, preserving every
-// byte position so a hit offset locates the match in the original text.
-//
-// A rune whose lowercase form is a different width is left alone rather than
-// folded: Unicode's few width-changing cases are worth less than offsets that
-// can be trusted, and a renderer highlights by offset without re-searching.
-func fold(dst []byte, s string) []byte {
-	dst = append(dst[:0], s...)
-	for i := 0; i < len(dst); i++ {
-		c := dst[i]
-		if c < utf8.RuneSelf {
-			if 'A' <= c && c <= 'Z' {
-				dst[i] = c + 'a' - 'A'
-			}
-			continue
-		}
-		r, size := utf8.DecodeRune(dst[i:])
-		if lower := unicode.ToLower(r); lower != r && utf8.RuneLen(lower) == size {
-			utf8.EncodeRune(dst[i:], lower)
-		}
-		i += size - 1
-	}
-	return dst
 }

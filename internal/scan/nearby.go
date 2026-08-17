@@ -1,7 +1,6 @@
 package scan
 
 import (
-	"bytes"
 	"cmp"
 	"math/bits"
 	"slices"
@@ -67,6 +66,13 @@ func nearbyMax(n int) int {
 
 // survey explains a zero-result search: what each term matched on its own, and
 // for the terms nothing matched, what the corpus does carry near them.
+//
+// Both walks are cut into contiguous ranges walked concurrently. That is safe
+// for a simpler reason than the hit path's: a range only ever accumulates, and
+// the merge is addition, which does not care what order it happens in. The one
+// thing sharding must not move is where the byte budget runs out, so budgetCut
+// settles that over the whole corpus first and the ranges are cut from the
+// prefix it picks.
 func (m matcher) survey(turns []schema.Turn, want map[schema.Tier]bool, keep func(*schema.Turn) bool, max int) []TermReport {
 	reports := make([]TermReport, len(m.terms))
 	for i := range m.terms {
@@ -74,59 +80,117 @@ func (m matcher) survey(turns []schema.Turn, want map[schema.Tier]bool, keep fun
 	}
 	searched := func(t *schema.Turn) bool { return want[t.Tier] && (keep == nil || keep(t)) }
 
-	var buf []byte
 	// A single-term search that found nothing proves that term is carried by no
 	// turn, so the counting pass would only re-derive a zero.
 	if len(m.terms) > 1 {
-		for i := range turns {
-			if !searched(&turns[i]) {
-				continue
-			}
-			buf = fold(buf, turns[i].Text)
-			for j := range m.terms {
-				if bytes.Contains(buf, m.terms[j].needle) {
-					reports[j].Turns++
-				}
+		for _, counts := range overRanges(len(turns), func(lo, hi int) []int {
+			return m.count(turns[lo:hi], searched)
+		}) {
+			for j, n := range counts {
+				reports[j].Turns += n
 			}
 		}
 	}
 
-	var missing []*collector
+	var missing []int
 	for i := range reports {
 		if reports[i].Turns == 0 {
-			missing = append(missing, newCollector(m.terms[i].text))
+			missing = append(missing, i)
 		}
 	}
 	if len(missing) == 0 {
 		return reports
 	}
-
-	budget := nearbyBudget
-	for i := range turns {
-		if budget <= 0 {
-			break
+	newCollectors := func() []*collector {
+		out := make([]*collector, len(missing))
+		for i, j := range missing {
+			out[i] = newCollector(m.terms[j].text)
 		}
+		return out
+	}
+
+	ranges := overRanges(budgetCut(turns, searched), func(lo, hi int) []*collector {
+		cols := newCollectors()
+		gather(turns[lo:hi], searched, cols)
+		return cols
+	})
+
+	var found []*collector
+	switch len(ranges) {
+	case 0:
+		// The budget bought no turns at all, and every missing term is still owed
+		// an answer — an empty offer, which is not the same as no report.
+		found = newCollectors()
+	default:
+		found = ranges[0]
+		for _, r := range ranges[1:] {
+			for i := range found {
+				found[i].absorb(r[i])
+			}
+		}
+	}
+	for i, j := range missing {
+		reports[j].Nearby = found[i].best(max)
+	}
+	return reports
+}
+
+// count is how many turns of this range carry each term on its own. It reads
+// the compiled terms and writes nothing shared, so ranges need no fork.
+func (m matcher) count(turns []schema.Turn, searched func(*schema.Turn) bool) []int {
+	out := make([]int, len(m.terms))
+	var buf []byte
+	for i := range turns {
 		if !searched(&turns[i]) {
 			continue
 		}
 		buf = fold(buf, turns[i].Text)
-		budget -= len(buf)
+		for j := range m.terms {
+			if m.terms[j].found(buf) {
+				out[j]++
+			}
+		}
+	}
+	return out
+}
+
+// gather offers every word of this range to every collector.
+func gather(turns []schema.Turn, searched func(*schema.Turn) bool, cols []*collector) {
+	var buf []byte
+	for i := range turns {
+		if !searched(&turns[i]) {
+			continue
+		}
+		buf = fold(buf, turns[i].Text)
 		tokenize(buf, func(tok []byte) {
-			for _, c := range missing {
+			for _, c := range cols {
 				c.offer(tok)
 			}
 		})
 	}
+}
 
-	next := 0
-	for i := range reports {
-		if reports[i].Turns != 0 {
-			continue
+// budgetCut is the index of the first turn the byte budget cannot pay for, so
+// turns[:budgetCut] is exactly what the suggestion pass covers.
+//
+// It is settled over the whole corpus before any range is cut. A budget spent
+// range by range would run out at a different turn on a machine with a different
+// core count, and the suggestions would follow it — the one way sharding this
+// pass could change an answer.
+//
+// fold preserves every byte position, so a turn's folded length is the length of
+// its text and nothing here has to fold to know what a turn costs.
+func budgetCut(turns []schema.Turn, searched func(*schema.Turn) bool) int {
+	budget := nearbyBudget
+	for i := range turns {
+		if budget <= 0 {
+			return i
 		}
-		reports[i].Nearby = missing[next].best(max)
-		next++
+		if searched(&turns[i]) {
+			budget -= len(turns[i].Text)
+		}
 	}
-	return reports
+	return len(turns)
 }
 
 // collector accumulates the corpus terms close to one missing query term.
@@ -203,6 +267,19 @@ func (c *collector) near(tok []byte) bool {
 		return false
 	}
 	return distance(c.term, tok, c.maxDist) <= c.maxDist
+}
+
+// absorb folds another range's counts into c.
+//
+// candidateCap bounds each range's map rather than their union, so a corpus cut
+// into k ranges may hold k times as many candidates as one pass would. That is a
+// memory bound and not an answer: on the real corpus the widest query shape
+// measured — a five-letter term over all three tiers, where the shared-prefix
+// family rule is loosest — reached 70 candidates against a cap of 4096.
+func (c *collector) absorb(other *collector) {
+	for tok, n := range other.counts {
+		c.counts[tok] += n
+	}
 }
 
 func (c *collector) best(max int) []Term {

@@ -33,6 +33,7 @@ func baseline(args []string) error {
 	if err != nil {
 		return err
 	}
+	samples = bench.Judgeable(samples)
 	path := abs(root, *out)
 	if err := bench.WriteBaseline(path, samples); err != nil {
 		return err
@@ -78,7 +79,8 @@ func compare(args []string) error {
 		return err
 	}
 
-	c := bench.Compare(base.Samples, current, *threshold)
+	judged := bench.Judgeable(current)
+	c := bench.Compare(base.Samples, judged, *threshold)
 	for _, name := range c.Unrecorded {
 		fmt.Fprintf(os.Stderr, "unrecorded: %s is not in the baseline; re-record it with `benchrun baseline`\n", name)
 	}
@@ -105,7 +107,8 @@ func compare(args []string) error {
 	if len(failures) > 0 {
 		return fmt.Errorf("%s against %s", joinLines(failures), *path)
 	}
-	fmt.Fprintf(os.Stderr, "benchrun: %d benchmarks within the baseline\n", len(current))
+	fmt.Fprintf(os.Stderr, "benchrun: %d of %d benchmarks within the baseline; %d carry no allocation to judge\n",
+		len(judged), len(current), len(current)-len(judged))
 	return nil
 }
 

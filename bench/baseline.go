@@ -93,6 +93,31 @@ func trimProcs(name string) string {
 	return name[:i]
 }
 
+// Judgeable reports whether the committed baseline can rule on this sample.
+//
+// Two kinds of benchmark it cannot: one that names no generated corpus size is
+// not measured against fixed bytes, and one that allocates nothing has no
+// allocation to regress. BenchmarkFold is both — it times a byte loop over a
+// string built in the benchmark — so recording it would commit rows that every
+// comparison then has to skip, and leaving it unrecorded made `benchrun
+// baseline` write a file TestTheCommittedBaselineCoversEveryMeasuredBenchmark
+// rejects. Recording and comparing ask the same question here so the two cannot
+// disagree about what is judgeable.
+func (s Sample) Judgeable() bool {
+	return s.Size != "" && (s.Allocs > 0 || s.Bytes > 0)
+}
+
+// Judgeable keeps only the samples the baseline can rule on.
+func Judgeable(samples []Sample) []Sample {
+	out := make([]Sample, 0, len(samples))
+	for _, s := range samples {
+		if s.Judgeable() {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 func sizeIn(name string) Size {
 	for _, part := range strings.Split(name, "/") {
 		switch Size(part) {

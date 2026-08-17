@@ -130,6 +130,37 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: go build -o /tmp/recall-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/recall
 
+  # The differential harness builds the binary from the perf-baseline tag and
+  # requires byte-identical output from this tree. fetch-depth 0 is what makes it
+  # run at all: the default single-commit checkout carries no tags, so the ref
+  # would not resolve and the harness would skip while reporting success.
+  differential:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go1.24-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go1.24-
+      - name: output is byte-identical to the baseline
+        run: |
+          if ! go test -count=1 -v ./tests/differential/ 2>&1 | tee /tmp/diff.log; then
+            exit 1
+          fi
+          if grep -q '^--- SKIP\|    --- SKIP' /tmp/diff.log; then
+            echo "::error::the differential harness skipped instead of running; the baseline ref did not resolve" >&2
+            exit 1
+          fi
+
   bench:
     runs-on: ubuntu-latest
     steps:

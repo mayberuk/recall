@@ -64,6 +64,38 @@ func TestParseBenchmarksIgnoresEverythingElse(t *testing.T) {
 	}
 }
 
+// TestJudgeableKeepsOnlyWhatTheBaselineCanRuleOn pins the filter that stopped
+// `benchrun baseline` writing a file its own coverage test rejects. A benchmark
+// that names no corpus size, or allocates nothing at all, is not something an
+// allocation baseline has anything to say about.
+func TestJudgeableKeepsOnlyWhatTheBaselineCanRuleOn(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		sample bench.Sample
+		want   bool
+	}{
+		{"sized and allocating", bench.Sample{Name: "BenchmarkSearch/small/x", Size: bench.SizeSmall, Allocs: 37, Bytes: 8744}, true},
+		{"sized, allocation-free but holding bytes", bench.Sample{Name: "BenchmarkSearch/small/x", Size: bench.SizeSmall, Bytes: 8744}, true},
+		{"sized but costing nothing", bench.Sample{Name: "BenchmarkSearch/small/x", Size: bench.SizeSmall}, false},
+		{"allocating but unsized", bench.Sample{Name: "BenchmarkFold/ascii/1024B/vector", Allocs: 3}, false},
+		{"neither", bench.Sample{Name: "BenchmarkFold/ascii/1024B/vector"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.sample.Judgeable(); got != tc.want {
+				t.Errorf("Judgeable() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+
+	kept := bench.Judgeable([]bench.Sample{
+		{Name: "BenchmarkFold/ascii/1024B/vector"},
+		{Name: "BenchmarkSearch/small/x", Size: bench.SizeSmall, Allocs: 37},
+	})
+	if len(kept) != 1 || kept[0].Name != "BenchmarkSearch/small/x" {
+		t.Errorf("Judgeable kept %+v, want the sized allocating sample alone", kept)
+	}
+}
+
 func TestCompareFailsOnASingleExtraAllocation(t *testing.T) {
 	base := []bench.Sample{{Name: "BenchmarkSearch/small/single-term", Size: bench.SizeSmall, Allocs: 37, Bytes: 8744}}
 	current := []bench.Sample{{Name: "BenchmarkSearch/small/single-term", Size: bench.SizeSmall, Allocs: 38, Bytes: 8744}}
