@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.1.0] - 2026-08-23
+
 ### Added
 
 - **`install.sh` now installs a released binary rather than building from a checkout.**
