@@ -6,8 +6,12 @@
 go build -o ~/.local/bin/recall ./cmd/recall
 ```
 
-Static binary, `CGO_ENABLED=0`, Go 1.24, one external dependency
-(`github.com/tidwall/gjson`).
+Static binary, `CGO_ENABLED=0`, Go 1.25, two external dependencies
+(`github.com/tidwall/gjson`, `github.com/modelcontextprotocol/go-sdk`).
+
+Go 1.25 is the toolchain floor. This drops Go 1.24 support — not by preference, but because
+`github.com/modelcontextprotocol/go-sdk` declares `go 1.25.0` in its own `go.mod`, and that
+requirement carries into this module's directive.
 
 `internal/scan` carries hand-written assembly for arm64 and amd64 — the case-folding pass, in
 `fold_arm64.s` and `fold_amd64.s`. Neither is required: `fold_noasm.go` supplies a stub for any
@@ -72,12 +76,31 @@ RECALL_REAL_CORPUS=1 go test ./...
 This measures against a real session store, which `make bench-gate` and `make bench-compare`
 never touch — reach for it when a claim needs to hold on real data, not only on the generator's.
 
-## The one external dependency
+## The external dependencies
 
-`gjson` is the sole third-party import, and adding a second one is a decision worth writing down,
-not a quiet `go get`. It earned its place on measurement: stripping the full corpus takes 1.31 s
-with `gjson` versus 7.21 s with the standard library's `encoding/json` — 5.5x, because `gjson`
-extracts the one JSON path a caller asks for instead of unmarshaling every field of every record.
+A dependency is a decision written down, not a `go get`. Two direct dependencies currently earn
+their place, each for a different reason.
+
+`gjson` earned its place on measurement: stripping the full corpus takes 1.31 s with `gjson`
+versus 7.21 s with the standard library's `encoding/json` — 5.5x, because `gjson` extracts the
+one JSON path a caller asks for instead of unmarshaling every field of every record.
+
+`github.com/modelcontextprotocol/go-sdk` earned its place on reasoning rather than measurement:
+the Model Context Protocol wire format is a spec, not a format this repo should re-implement, and
+an official v1 implementation is cheaper to hold correct across protocol revisions than a
+hand-rolled decoder would be. The alternative — reading the spec once and writing a client by
+hand — is exactly the wrong side of the standard above: a protocol surface that changes out from
+under a hand-rolled parser is a maintenance cost this repo has no reason to carry itself.
+
+`docs/design.md` declined `golang.org/x/sys` as a *direct* dependency, on the grounds that
+`golang.org/x/sys/cpu` would break the one-dependency rule for a wider register on a step already
+fast enough. That rule was about direct dependencies. The SDK brings `golang.org/x/sys` in
+indirectly, along with seven other indirect modules — nobody chose those, they came along with
+the SDK the way `github.com/tidwall/match` and `github.com/tidwall/pretty` come along with
+`gjson`, and the gate only ever policed the direct set. Indirect is not the same as direct, but
+the rule's spirit is worth stating plainly rather than leaving it to inference: this repo still
+would not add `golang.org/x/sys/cpu` as a direct import for the reason `docs/design.md` gives,
+and the SDK's indirect pull of the package doesn't change that.
 
 ## `~/.claude/projects` is read-only
 

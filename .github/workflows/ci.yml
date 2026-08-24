@@ -13,10 +13,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        # 1.24 is the floor go.mod declares; stable is whatever setup-go
+        # 1.25 is the floor go.mod declares; stable is whatever setup-go
         # currently resolves that alias to, so this never needs a bump for a
         # Go release this repo didn't ask for.
-        go: ['1.24', stable]
+        go: ['1.25', stable]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -40,15 +40,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
       - uses: actions/cache@v4
         with:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: ${{ runner.os }}-go1.24-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go1.25-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go1.24-
+            ${{ runner.os }}-go1.25-
       - run: go test -count=1 -coverprofile=coverage.out ./...
       - run: ./scripts/coverage-gate.sh coverage.out
 
@@ -115,15 +115,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
       - uses: actions/cache@v4
         with:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: ${{ runner.os }}-go1.24-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go1.25-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go1.24-
+            ${{ runner.os }}-go1.25-
       - env:
           CGO_ENABLED: 0
           GOOS: ${{ matrix.goos }}
@@ -142,15 +142,15 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
       - uses: actions/cache@v4
         with:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: ${{ runner.os }}-go1.24-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go1.25-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go1.24-
+            ${{ runner.os }}-go1.25-
       - name: output is byte-identical to the baseline
         run: |
           if ! go test -count=1 -v ./tests/differential/ 2>&1 | tee /tmp/diff.log; then
@@ -167,15 +167,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
       - uses: actions/cache@v4
         with:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: ${{ runner.os }}-go1.24-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go1.25-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go1.24-
+            ${{ runner.os }}-go1.25-
       - name: micro-benchmarks vs. baseline (allocation regression only)
         run: |
           set -o pipefail

@@ -15,7 +15,7 @@ import (
 // one place a caller looks before its first invocation, and the top-level help
 // sends every caller to it.
 func TestVerbHelpWorksAndListsEveryFlag(t *testing.T) {
-	for _, verb := range []string{"find", "show", "when", "turns", "doctor", "guide"} {
+	for _, verb := range verbNames() {
 		t.Run(verb, func(t *testing.T) {
 			var out, errOut bytes.Buffer
 			if code := run([]string{verb, "--help"}, &out, &errOut); code != 0 {

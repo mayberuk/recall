@@ -9,10 +9,24 @@ GO ?= go
 # failure and the next real regression goes through it.
 ALLOC_THRESHOLD ?= 0.02
 
-.PHONY: build test vet bench bench-gate bench-micro bench-compare bench-baseline clean
+.PHONY: build cross test vet bench bench-gate bench-micro bench-compare bench-baseline clean
 
 build:
 	CGO_ENABLED=0 $(GO) build -o recall ./cmd/recall
+
+# The release workflow's six targets plus linux/386 and linux/riscv64, which
+# have no assembly path and so are the ones a change under internal/scan can
+# break. Building them here rather than only on a pushed tag is the difference
+# between finding that out now and finding it out during a release. Nothing is
+# kept: this asks whether the compile succeeds, not what it produced.
+CROSS_TARGETS = linux/amd64 linux/arm64 linux/386 linux/riscv64 \
+                darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
+
+cross:
+	@set -e; for t in $(CROSS_TARGETS); do \
+		echo "cross: $$t"; \
+		CGO_ENABLED=0 GOOS=$${t%%/*} GOARCH=$${t##*/} $(GO) build -o /dev/null ./cmd/recall; \
+	done
 
 test:
 	$(GO) test ./...
