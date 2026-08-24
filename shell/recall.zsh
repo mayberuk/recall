@@ -29,6 +29,16 @@
 # the shipped CLI costs a variable here rather than an edit.
 : ${RECALL_FZF_FORMAT_FLAG:=--fzf}
 
+# _recall_fzf_has reports whether this fzf accepts the given flags. It reads
+# stderr rather than the exit status: with no input and an empty filter fzf
+# exits non-zero for having matched nothing, which says nothing about whether
+# it understood the flag.
+_recall_fzf_has() {
+  local err
+  err=$(fzf "$@" --filter= < /dev/null 2>&1 > /dev/null)
+  [[ $err != *'unknown option'* && $err != *'unsupported key'* ]]
+}
+
 recall-fzf() {
   emulate -L zsh
   setopt local_options pipe_fail
@@ -63,6 +73,15 @@ recall-fzf() {
   # coreutils, so the BSD spelling fails outright on Linux.
   notefile=$(mktemp "${TMPDIR:-/tmp}/recall-fzf.XXXXXX") || return 1
 
+  # fzf gained --id-nth and the result-final event after 0.67, and a flag fzf
+  # does not know is a hard error that costs the whole finder. Probe for each
+  # rather than compare version strings: the question is what this binary
+  # accepts, and a build or a fork can answer it differently from its number.
+  local -a idnth=()
+  _recall_fzf_has --id-nth=1 && idnth=(--id-nth=1)
+  local settled=result-final
+  _recall_fzf_has --bind='result-final:transform-header(true)' || settled=result
+
   local bin_q=${(q)bin}
   local fmt_q=${(q)RECALL_FZF_FORMAT_FLAG}
   local extra_q=${(j: :)${(q)extra}}
@@ -82,18 +101,20 @@ recall-fzf() {
 
   local -a ui=(
     --with-nth=2..
-    --id-nth=1
+    $idnth
     # --track follows a record's identity only when --id-nth is paired with a
     # *synchronous* reload; under async change:reload it silently degrades to
     # tracking a screen index and lands on the wrong record. A find is ~35 ms,
     # so blocking the keystroke is not felt. Do not "modernise" this to reload.
+    # Where --id-nth is missing, --track still holds a position, which is worth
+    # more than nothing and is the whole cost of an older fzf here.
     --track
     --bind="change:reload-sync(if [ -n {q} ]; then $bin_q find {q} $extra_q $fmt_q 2> $note_q; else : > $note_q; fi)"
     # The coverage line is a contract: a search that does not declare the tier it
     # skipped is a defect. On a hit recall folds it into the last record, but a
     # zero-hit query has no record to carry it, so the header shows the note
     # instead — once the result is final, not on every intermediate keystroke.
-    --bind="result-final:transform-header([ \"\$FZF_MATCH_COUNT\" = 0 ] && [ -s $note_q ] && cat $note_q; printf '%s' ${(q)keys})"
+    --bind="$settled:transform-header([ \"\$FZF_MATCH_COUNT\" = 0 ] && [ -s $note_q ] && cat $note_q; printf '%s' ${(q)keys})"
     # recall owns matching and ranking; fzf only draws.
     --disabled
     --no-sort
