@@ -25,9 +25,8 @@
 
 : ${RECALL_BIN:=recall}
 
-# The records mode is not on the pinned CLI surface yet — see
-# logs/escalations/interactive-1.md. Reading it from the environment means a
-# different spelling in the shipped CLI costs a variable, not an edit here.
+# Reading the format flag from the environment means a different spelling in
+# the shipped CLI costs a variable here rather than an edit.
 : ${RECALL_FZF_FORMAT_FLAG:=--fzf}
 
 recall-fzf() {
@@ -59,7 +58,10 @@ recall-fzf() {
   # recall puts a zero-hit report and its coverage line on stderr, and the
   # records on stdout, so an empty list is only explained by the stderr side.
   local notefile
-  notefile=$(mktemp -t recall-fzf) || return 1
+  # An explicit template rather than `mktemp -t <prefix>`: -t takes a bare
+  # prefix on BSD but demands a template of at least three X's on GNU
+  # coreutils, so the BSD spelling fails outright on Linux.
+  notefile=$(mktemp "${TMPDIR:-/tmp}/recall-fzf.XXXXXX") || return 1
 
   local bin_q=${(q)bin}
   local fmt_q=${(q)RECALL_FZF_FORMAT_FLAG}
@@ -141,24 +143,28 @@ recall-fzf() {
       print -ru2 -- "recall-fzf: a query is required when there is no terminal"
       rc=2
     else
-      local accept=2
-      (( ids )) && accept=1
       local rec
-      # --filter='' rather than the query: fzf re-ranks by its own fuzzy score
-      # for any non-empty filter, which would throw away recall's concentration
-      # ranking — the thing this pipeline exists to preserve. --disabled does
-      # not prevent that; it has no effect under --filter at all.
+      # No fzf on this path. With an empty filter it neither matches nor ranks —
+      # recall already did both — so its only job was splitting the record on
+      # \x1f, and it does not do that reliably: fzf 0.67 ignores --accept-nth
+      # under --filter entirely and hands back the whole record for any field
+      # asked for. Splitting here is the same work with no version to be wrong
+      # about, and it keeps recall's concentration ranking, which re-ranking
+      # under a non-empty filter would have thrown away.
       "${find_cmd[@]}" 2> "$notefile" |
-        fzf "${common[@]}" --accept-nth=$accept --filter='' |
         while IFS= read -r -d $'\0' rec; do
-          print -r -- "$rec"
-          (( ids )) || print
+          if (( ids )); then
+            print -r -- "${rec%%$'\x1f'*}"
+          else
+            print -r -- "${rec#*$'\x1f'}"
+            print
+          fi
         done
       ps=("${pipestatus[@]}")
-      # fzf exits 1 on no results, which is also recall's shape of failure; a
-      # failing producer wins so a broken archive is never read as "no hits".
-      rc=${ps[2]}
-      (( ps[1] )) && rc=${ps[1]}
+      # recall's own exit code is the answer now that nothing downstream can
+      # invent one: 1 is "searched, matched nothing", which is what a caller
+      # needs to tell apart from a broken archive.
+      rc=${ps[1]}
       # There is no header without a terminal, so the miss report and its
       # coverage line reach the caller the only way left: stderr.
       forward=1

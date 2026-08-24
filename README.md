@@ -135,6 +135,21 @@ $ recall when "rate limit"
 
 More worked examples, with output: **[docs/examples.md](docs/examples.md)**.
 
+### Interactive, if you have fzf
+
+```sh
+source shell/recall.zsh
+recall-fzf idempotency          # live finder; prints the chosen session id
+recall show "$(recall-fzf --ids idempotency | head -1)"
+```
+
+Type and the list re-searches; `ctrl-o` opens the whole session in your pager, `enter` prints
+its id and exits — so it composes with everything above. recall owns matching and ranking
+(fzf's own are turned off), which is why the ordering you see is still concentration ranking.
+
+With no terminal the same function prints ranked records to stdout instead, so it works in a
+pipeline: `recall-fzf --ids <query>` gives one session id per line.
+
 ## Fast enough that an index would be a liability
 
 Of everything Claude Code writes to disk, the actual conversation is about **3%** — 47.8 MB of a
