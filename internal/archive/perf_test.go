@@ -211,7 +211,7 @@ func BenchmarkLoad(b *testing.B) {
 
 func benchStore(b *testing.B, root, dir string) *Store {
 	b.Helper()
-	s, err := Open(Options{Dir: dir, Root: root, Strip: strip.New().Strip, Resolve: repo.New().Repo})
+	s, err := Open(Options{Dir: dir, Root: root, Provider: strip.ClaudeCode(), Resolve: repo.New().Repo})
 	if err != nil {
 		b.Fatalf("Open: %v", err)
 	}

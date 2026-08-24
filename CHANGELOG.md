@@ -8,6 +8,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`install.sh` now installs a released binary rather than building from a checkout.**
+  `curl -fsSL https://raw.githubusercontent.com/mayberuk/recall/main/install.sh | sh` detects the
+  platform, downloads the matching release asset, **verifies it against the release's published
+  sha256** and refuses to install on a mismatch, then puts it in `~/.local/bin`. `RECALL_VERSION`
+  pins a version and `RECALL_INSTALL_DIR` moves the destination. Until now there was no way to
+  install recall without a Go toolchain, despite the release workflow already publishing six
+  cross-compiled binaries and their checksums. The build-from-a-checkout script it replaces is
+  still here, as `scripts/install-from-source.sh`.
+- **`AGENTS.md`, `llms.txt` and `ai.txt`.** `AGENTS.md` is the build, test and style contract for
+  an agent working on recall's own source, in the format Claude Code, Codex, Cursor, Copilot,
+  Gemini CLI and Windsurf all read natively. `llms.txt` is the curated map of the documentation.
+  `ai.txt` was proposed as an AI-training opt-out; recall is a tool for AI agents to call, under a
+  licence that already grants what a refusal would withhold, so its copy grants those uses
+  explicitly and spends the rest of the file pointing an agent at what it needs.
+- **`scripts/demo.sh` and the fixed corpus behind it.** Builds recall, writes five plausible
+  sessions across three repos — one of them checked out twice — and runs every command the docs
+  quote. Each example in the README and in `docs/examples.md` is now output a reader can
+  reproduce, rather than output pasted from a store nobody else can see.
 - `recall` now serves an agent over the Model Context Protocol, so the questions it answers no
   longer have to be typed at a shell to be asked. `recall mcp serve` speaks MCP revision
   `2026-07-28` over stdio and exposes five read-only tools — `recall_find`, `recall_guide`,
@@ -37,6 +55,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **The README is a front door rather than a manual.** The reference material it carried moved out
+  intact, to `docs/mcp.md` (the five tools, every client's config path, what `install` writes),
+  `docs/examples.md` (worked examples for all six commands) and `docs/agents.md` (exit codes,
+  machine output forms, the coverage contract, choosing a provider).
+- **`archive.Options.Strip` is gone.** It predated the `Provider` interface and its own comment set
+  the condition for removing it: it goes once the searching verbs read through a provider, which
+  they now all do. It had no caller in the shipped binary. The benchmark harness and the
+  integration gate that still passed it now name `strip.ClaudeCode()` outright. `Options.Root`
+  stays, as the session-store override those harnesses actually wanted; it no longer decides
+  whose store it is.
 - Searching is several times faster, with no change to what any command returns. Against 1.0.0 on
   the machine the work started on: a conversation-tier `find` 88 → 30 ms, an all-tier `find`
   460 → 93 ms, and a miss over every tier 549 → 113 ms. The corpus is still scanned in full and

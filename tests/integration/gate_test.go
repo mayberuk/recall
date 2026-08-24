@@ -38,10 +38,10 @@ func build(t *testing.T) gate {
 	t.Helper()
 	corpus := fixtures.Materialize(t)
 	s, err := archive.Open(archive.Options{
-		Dir:     t.TempDir(),
-		Root:    corpus.Root,
-		Strip:   strip.New().Strip,
-		Resolve: repo.New().Repo,
+		Dir:      t.TempDir(),
+		Root:     corpus.Root,
+		Provider: strip.ClaudeCode(),
+		Resolve:  repo.New().Repo,
 	})
 	if err != nil {
 		t.Fatalf("archive.Open: %v", err)

@@ -237,7 +237,7 @@ func TestForcedPassReportsTheSameCollapsedCountAsAColdBuild(t *testing.T) {
 		t.Fatal("the cold build collapsed nothing, so this proves nothing")
 	}
 
-	forced, err := Open(Options{Dir: s.Dir(), Root: c.Root, Strip: stubStrip, Resolve: stubResolve, Force: true})
+	forced, err := Open(Options{Dir: s.Dir(), Root: c.Root, Provider: claudeCodeStub{}, Resolve: stubResolve, Force: true})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -895,7 +895,7 @@ func TestOpenRefusesWithoutTheInjectedFunctions(t *testing.T) {
 	if _, err := Open(Options{Dir: t.TempDir(), Root: t.TempDir(), Resolve: stubResolve}); err == nil {
 		t.Error("Open accepted a nil strip function")
 	}
-	if _, err := Open(Options{Dir: t.TempDir(), Root: t.TempDir(), Strip: stubStrip}); err == nil {
+	if _, err := Open(Options{Dir: t.TempDir(), Root: t.TempDir(), Provider: claudeCodeStub{}}); err == nil {
 		t.Error("Open accepted a nil repo resolver")
 	}
 }
@@ -1225,7 +1225,7 @@ func TestFrozenCorpusFramesToTheRecordedBytes(t *testing.T) {
 func TestTwoColdBuildsWithTheRealResolverAgree(t *testing.T) {
 	c := corpus(t)
 	build := func() *Store {
-		s, err := Open(Options{Dir: t.TempDir(), Root: c.Root, Strip: stubStrip, Resolve: repo.New().Repo})
+		s, err := Open(Options{Dir: t.TempDir(), Root: c.Root, Provider: claudeCodeStub{}, Resolve: repo.New().Repo})
 		if err != nil {
 			t.Fatalf("Open: %v", err)
 		}

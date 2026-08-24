@@ -683,12 +683,16 @@ Still open:
   the scanned bytes, which is why it is opt-in; the 3% budget that forced it there was a
   pre-registered gate, and no benchmark now compares the two, so a change that makes counting
   always-on again would not be caught.
-- **`archive.Options.Strip` has no production caller.** Its own doc says it retires once the
-  searching verbs read through a `Provider`, which they now do. Only the benchmark harness and
-  the legacy-output comparison still pass it, and retiring it means deciding what happens to that
-  comparison.
 
 Settled by what shipped, previously open:
+
+- **`archive.Options.Strip` had no production caller** — retired. Its own doc set the condition:
+  it goes once the searching verbs read through a `Provider`, which they do. The benchmark
+  harness and the integration gate now name `strip.ClaudeCode()` outright, which is what they
+  meant; `Options.Root` stays as the root override those harnesses actually needed. The
+  doctor comparison it fed survives, pinning what is still true and worth pinning — that routing
+  a single-agent run through the selection machinery prints the same bytes as opening that one
+  store directly — rather than contrasting against a code path that no longer exists.
 
 - **fzf field indexing with multi-line records** — `find --fzf` emits NUL-terminated
   `<session id>\x1f<block>` records and `shell/recall.zsh` is the front end, so `--read0` carries

@@ -121,7 +121,7 @@ func TestOpenDerivesDirAndRootWhenUnset(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	s, err := Open(Options{Strip: stubStrip, Resolve: stubResolve})
+	s, err := Open(Options{Provider: claudeCodeStub{}, Resolve: stubResolve})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestOpenFailsWhenTheArchiveDirectoryCannotBeCreated(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := Open(Options{Dir: filepath.Join(blocker, "archive"), Root: t.TempDir(), Strip: stubStrip, Resolve: stubResolve})
+	_, err := Open(Options{Dir: filepath.Join(blocker, "archive"), Root: t.TempDir(), Provider: claudeCodeStub{}, Resolve: stubResolve})
 	if err == nil {
 		t.Error("Open succeeded creating a directory under a plain file")
 	}
@@ -161,7 +161,7 @@ func TestOpenPropagatesADirResolutionFailure(t *testing.T) {
 	clearHomeEnv(t)
 	t.Setenv("HOME", "")
 
-	if _, err := Open(Options{Root: t.TempDir(), Strip: stubStrip, Resolve: stubResolve}); err == nil {
+	if _, err := Open(Options{Root: t.TempDir(), Provider: claudeCodeStub{}, Resolve: stubResolve}); err == nil {
 		t.Error("Open succeeded deriving Dir with no RECALL_HOME, XDG_DATA_HOME, or HOME")
 	}
 }
@@ -175,7 +175,7 @@ func TestOpenPropagatesARootResolutionFailure(t *testing.T) {
 	clearHomeEnv(t)
 	t.Setenv("HOME", "")
 
-	if _, err := Open(Options{Dir: t.TempDir(), Strip: stubStrip, Resolve: stubResolve}); err == nil {
+	if _, err := Open(Options{Dir: t.TempDir(), Provider: claudeCodeStub{}, Resolve: stubResolve}); err == nil {
 		t.Error("Open succeeded deriving Root with no CLAUDE_PROJECTS_DIR or HOME")
 	}
 }
@@ -193,7 +193,7 @@ func TestOpenWithARootIgnoresTheSelection(t *testing.T) {
 	t.Setenv("RECALL_AGENT", "codex")
 
 	base, root := t.TempDir(), t.TempDir()
-	s, err := Open(Options{Dir: base, Root: root, Strip: stubStrip, Resolve: stubResolve})
+	s, err := Open(Options{Dir: base, Root: root, Provider: claudeCodeStub{}, Resolve: stubResolve})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -219,7 +219,7 @@ func TestOpenWithAStripFunctionIgnoresTheSelection(t *testing.T) {
 	t.Setenv("CLAUDE_PROJECTS_DIR", projects)
 
 	base := t.TempDir()
-	s, err := Open(Options{Dir: base, Strip: stubStrip, Resolve: stubResolve})
+	s, err := Open(Options{Dir: base, Provider: claudeCodeStub{}, Resolve: stubResolve})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

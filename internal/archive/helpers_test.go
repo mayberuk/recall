@@ -25,6 +25,24 @@ func framed(body []byte, turns int) []byte {
 	return append(b, body...)
 }
 
+// claudeCodeStub is the seam Options.Strip used to open: claude-code's agent
+// and root, decoded by stubStrip. It lives here rather than in the package
+// because nothing the binary runs needs it — the searching verbs reach
+// claude-code through internal/strip's own provider.
+type claudeCodeStub struct{}
+
+func (claudeCodeStub) Agent() schema.Agent          { return schema.AgentClaudeCode }
+func (claudeCodeStub) Root() (string, error)        { return DefaultRoot() }
+func (claudeCodeStub) IsTranscript(rel string) bool { return filepath.Ext(rel) == ".jsonl" }
+func (claudeCodeStub) NeedsHead() bool              { return false }
+func (claudeCodeStub) Decoder(string) Decoder       { return stripDecoder(stubStrip) }
+
+// stripDecoder holds no state, so every file in a read gets an equivalent one
+// and the concurrency of that read is unchanged.
+type stripDecoder func(jsonl.Record) ([]schema.Turn, bool)
+
+func (d stripDecoder) Turns(rec jsonl.Record) ([]schema.Turn, bool) { return d(rec) }
+
 // stubStrip stands in for internal/strip, which is built in parallel with this
 // package. It keeps the two properties the archive depends on: one record can
 // yield several turns, and a record that yields none still consumes its uuid.
@@ -94,7 +112,7 @@ func stubResolve(cwd string) string {
 
 func newStore(t *testing.T, root string) *Store {
 	t.Helper()
-	s, err := Open(Options{Dir: t.TempDir(), Root: root, Strip: stubStrip, Resolve: stubResolve})
+	s, err := Open(Options{Dir: t.TempDir(), Root: root, Provider: claudeCodeStub{}, Resolve: stubResolve})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

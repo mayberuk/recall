@@ -20,11 +20,13 @@
 # because a slice of it only runs against a real machine's CPU model file or
 # a full `make bench` invocation, neither of which this gate exercises.
 #
-# bench/cmd/benchrun, bench/turns, bench/groupbench and tests/acceptance/runner
-# are exempt from any floor: none is reachable from ./cmd/recall (confirmed by
-# `go list -deps ./cmd/recall`), so they are harness, not shipped code, and the
-# acceptance runner in particular is validated by being run, not by being
-# covered. groupbench is measured the same way — `make bench-gate` fails when
+# bench/cmd/benchrun, bench/turns, bench/groupbench, tests/acceptance/runner and
+# scripts/demo are exempt from any floor: none is reachable from ./cmd/recall
+# (confirmed by `go list -deps ./cmd/recall`), so they are harness, not shipped
+# code, and the acceptance runner in particular is validated by being run, not
+# by being covered. scripts/demo is the same case: it writes the corpus the
+# documented examples are taken from, and `scripts/demo.sh` failing to produce
+# them is a louder signal than a covered line. groupbench is measured the same way — `make bench-gate` fails when
 # its comparison breaches, which is a stronger check than a covered line. Each
 # is still printed with its real percentage below — an exemption that hid the
 # number is how a harness package rots unnoticed. New packages are exempted by
@@ -54,6 +56,7 @@ harness_pkgs=(
   "${module}/bench/turns"
   "${module}/bench/groupbench"
   "${module}/tests/acceptance/runner"
+  "${module}/scripts/demo"
 )
 
 fail=0
