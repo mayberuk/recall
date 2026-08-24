@@ -29,6 +29,7 @@ type showCmd struct {
 	turnID   string
 	around   int
 	chars    int
+	words    bool
 }
 
 func newShowCmd() *showCmd {
@@ -41,6 +42,7 @@ func newShowCmd() *showCmd {
 	c.fs.StringVar(&c.turnID, "turn", "", "anchor the window on this record uuid")
 	c.fs.IntVar(&c.around, "around", c.around, "turns of context each side of a match")
 	c.fs.IntVar(&c.chars, "chars", c.chars, "most characters of each turn to quote; 0 for the whole turn")
+	c.fs.BoolVar(&c.words, "words", false, "also count the words scanned, and the lines with them — a second pass over the scanned bytes")
 	return c
 }
 
@@ -89,7 +91,8 @@ func show(args []string, out io.Writer) error {
 	}
 
 	session := sessionTurns(c.turns, id)
-	res := scan.Search(session, scan.Query{Text: query, Tiers: tiers, NearbyMax: -1})
+	res := scan.Search(session, scan.Query{Text: query, Tiers: tiers, NearbyMax: -1, CountWords: cmd.words})
+	c.record(res)
 
 	ordered := onTiers(session, tiers)
 	anchors, anchor, err := anchorsOf(ordered, res.Hits, turnID, query, full, around)
@@ -146,10 +149,19 @@ func (c *corpus) fitShow(view *render.Show, windows []render.Window, res scan.Re
 	}
 	ceiling := g.Cap()
 
-	// Binary search over a size that only grows with n. A window that fits is
-	// re-rendered at the end because the search leaves the view at whatever it
-	// probed last, not at the answer.
+	// Binary search over a size that only grows with n. The winning attempt's
+	// body and coverage are the ones captured when the search confirms they
+	// fit, not re-rendered afterward: the stats footer's elapsed figure only
+	// grows with wall-clock time, so re-rendering the same n later could come
+	// back a byte or two larger than what the search just verified fit under
+	// ceiling, and the cap check downstream would then reject a window this
+	// function itself just confirmed.
 	best := 1
+	bestBody, err := attempt(1)
+	if err != nil {
+		return nil, err
+	}
+	bestCoverage := view.Coverage
 	for lo, hi := 1, len(windows); lo <= hi; {
 		mid := (lo + hi) / 2
 		body, err := attempt(mid)
@@ -157,12 +169,16 @@ func (c *corpus) fitShow(view *render.Show, windows []render.Window, res scan.Re
 			return nil, err
 		}
 		if int64(len(body)) <= ceiling {
-			best, lo = mid, mid+1
+			best, bestBody, bestCoverage = mid, body, view.Coverage
+			lo = mid + 1
 			continue
 		}
 		hi = mid - 1
 	}
-	return attempt(best)
+	view.Windows = windows[:best]
+	view.Shown, view.Fitted = turnsIn(view.Windows), matchesIn(view.Windows)
+	view.Coverage = bestCoverage
+	return bestBody, nil
 }
 
 // renderShow produces whichever format was asked for, so the cap is measured

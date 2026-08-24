@@ -1,16 +1,26 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/mayberuk/recall/internal/fixtures"
 	"github.com/mayberuk/recall/internal/fperr"
+	"github.com/mayberuk/recall/internal/rank"
 	"github.com/mayberuk/recall/internal/render"
 	"github.com/mayberuk/recall/internal/scan"
 	"github.com/mayberuk/recall/internal/schema"
 )
+
+func callTurns(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+	var out bytes.Buffer
+	err := notFoundIsNotAFailure(turns(args, &out))
+	return out.String(), err
+}
 
 func TestCheckRejectsANonPositiveLimit(t *testing.T) {
 	f := newSearchFlags()
@@ -307,3 +317,328 @@ func (unencodableLined) MarshalJSON() ([]byte, error) { return nil, errors.New("
 type failingLined struct{}
 
 func (failingLined) JSONL() ([]byte, error) { return nil, errors.New("boom") }
+
+// TestSearchAccumulatesBytesAndTurnsFromItsOwnScan is the base case: one
+// command, one scan.Search call, so the corpus's running total is exactly
+// what that one scan reported — nothing summed, nothing dropped.
+func TestSearchAccumulatesBytesAndTurnsFromItsOwnScan(t *testing.T) {
+	c := &corpus{
+		turns: []schema.Turn{
+			{Session: "s1", UUID: "u1", Repo: "acme/mobile", Tier: schema.TierConversation, Text: "agvtool ran here"},
+		},
+		tiers: []schema.Tier{schema.TierConversation},
+	}
+	f := newSearchFlags()
+	f.All = true // bypass this test process's own real git scope, which would filter every synthetic turn out
+	if err := f.check(); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	s := c.search("agvtool", f, rank.Concentration)
+
+	if s.scan.BytesScanned == 0 || s.scan.TurnsScanned == 0 {
+		t.Fatalf("scan = %+v, want a real scan over the one turn, not a vacuous zero", s.scan)
+	}
+	if c.work.bytes != s.scan.BytesScanned {
+		t.Errorf("work.bytes = %d, want %d (the scan's own BytesScanned)", c.work.bytes, s.scan.BytesScanned)
+	}
+	if c.work.turns != s.scan.TurnsScanned {
+		t.Errorf("work.turns = %d, want %d (the scan's own TurnsScanned)", c.work.turns, s.scan.TurnsScanned)
+	}
+	if c.work.passes != s.scan.Passes {
+		t.Errorf("work.passes = %d, want %d", c.work.passes, s.scan.Passes)
+	}
+}
+
+// TestRelaxedRepoScopedSearchSumsBytesAndPassesAcrossTheWiderProbe covers a
+// command that runs scan.Search twice: the scoped search finds only a partial
+// match, so betterElsewhere re-probes the whole corpus, and the footer has to
+// report both passes' bytes rather than the scoped pass alone.
+func TestRelaxedRepoScopedSearchSumsBytesAndPassesAcrossTheWiderProbe(t *testing.T) {
+	c := &corpus{
+		turns: []schema.Turn{
+			{Session: "s-scoped", UUID: "u1", Repo: "acme/scoped", Tier: schema.TierConversation,
+				Text: "alpha shows up here on its own"},
+			{Session: "s-wider", UUID: "u2", Repo: "acme/wider", Tier: schema.TierConversation,
+				Text: "alpha and beta both show up here"},
+		},
+		tiers: []schema.Tier{schema.TierConversation},
+	}
+	f := newSearchFlags()
+	f.Repo = "acme/scoped"
+	if err := f.check(); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	s := c.search("alpha beta", f, rank.Concentration)
+
+	if !s.scan.Match.Relaxed() {
+		t.Fatalf("Match = %+v, want a relaxed partial match to exercise betterElsewhere", s.scan.Match)
+	}
+	if len(s.notes) == 0 {
+		t.Fatal("betterElsewhere did not fire, so this test proves nothing about the wider probe's bytes")
+	}
+
+	// betterElsewhere's own probe result never reaches the caller, so observe it
+	// independently with the same query betterElsewhere issues (see search.go), rather
+	// than trusting c.work — the accumulator under test — to report its own inputs back.
+	wide := scan.Search(c.turns, scan.Query{
+		Text:       "alpha beta",
+		Tiers:      c.tiers,
+		Exact:      f.Exact,
+		AllTerms:   f.AllTerms,
+		Not:        f.Not,
+		Keep:       f.filter.keep(),
+		NearbyMax:  -1,
+		CountWords: f.Words,
+	})
+
+	wantPasses := s.scan.Passes + wide.Passes
+	if c.work.passes != wantPasses {
+		t.Errorf("work.passes = %d, want %d (scoped pass's %d plus the wider probe's %d)",
+			c.work.passes, wantPasses, s.scan.Passes, wide.Passes)
+	}
+	wantBytes := s.scan.BytesScanned + wide.BytesScanned
+	if c.work.bytes != wantBytes {
+		t.Errorf("work.bytes = %d, want %d (scoped pass's %d bytes plus the wider probe's %d) — an implementation "+
+			"that drops the scoped pass and counts only the wide probe would report %d here",
+			c.work.bytes, wantBytes, s.scan.BytesScanned, wide.BytesScanned, wide.BytesScanned)
+	}
+}
+
+// TestElsewhereMemoisesTheWholeMachineProbe is the --budget retry loop's
+// invariant: fitToBudget can call elsewhere for the same query several times
+// in one command, and only the first has to pay for the scan.
+func TestElsewhereMemoisesTheWholeMachineProbe(t *testing.T) {
+	c := &corpus{turns: []schema.Turn{
+		{Session: "s1", UUID: "u1", Repo: "acme/wider", Tier: schema.TierConversation, Text: "gamma appears only over here"},
+	}}
+	f := newSearchFlags()
+	sc := render.Scope{Repo: "acme/scoped"}
+
+	first, firstTerms := c.elsewhere("gamma", f, sc)
+	passesAfterFirst, bytesAfterFirst := c.work.passes, c.work.bytes
+	if passesAfterFirst == 0 {
+		t.Fatal("the first call did not record a scan")
+	}
+
+	second, secondTerms := c.elsewhere("gamma", f, sc)
+	if c.work.passes != passesAfterFirst || c.work.bytes != bytesAfterFirst {
+		t.Errorf("a second call for the same query re-ran the scan: passes %d -> %d, bytes %d -> %d",
+			passesAfterFirst, c.work.passes, bytesAfterFirst, c.work.bytes)
+	}
+	if len(first) != len(second) || len(firstTerms) != len(secondTerms) {
+		t.Errorf("the memoised call returned a different answer: %v/%v vs %v/%v", first, firstTerms, second, secondTerms)
+	}
+}
+
+// TestWordsFlagDrivesBothLineAndWordCountsInStats holds the mapping this part
+// is responsible for: scan.Result carries one WordsCounted bool for both
+// counters, and coverageOf has to fan it out to render.Stats's separate
+// LinesKnown and WordsKnown.
+func TestWordsFlagDrivesBothLineAndWordCountsInStats(t *testing.T) {
+	// One newline, hand-counted here rather than taken from a run of the scanner —
+	// see internal/scan/stats_test.go's statsCorpus for the same convention.
+	const turnText = "several words on this line\nand one more line without any"
+	const wantLines = 1
+
+	c := &corpus{
+		turns: []schema.Turn{
+			{Session: "s1", UUID: "u1", Repo: "acme/mobile", Tier: schema.TierConversation, Text: turnText},
+		},
+		tiers: []schema.Tier{schema.TierConversation},
+	}
+	f := newSearchFlags()
+	f.All = true // bypass this test process's own real git scope, which would filter every synthetic turn out
+	f.Words = true
+	if err := f.check(); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	s := c.search("words", f, rank.Concentration)
+	if s.scan.TurnsScanned == 0 {
+		t.Fatalf("scan = %+v, want a real scan over the one turn, not a vacuous zero", s.scan)
+	}
+	cov := c.coverageOf(s.scan, f, s.skipped, nil, s.notes...)
+	if cov.Stats == nil {
+		t.Fatal("Stats is nil")
+	}
+	if !cov.Stats.LinesKnown || !cov.Stats.WordsKnown {
+		t.Errorf("Stats = %+v, want both LinesKnown and WordsKnown with --words", cov.Stats)
+	}
+	if cov.Stats.Words == 0 {
+		t.Error("Words = 0 with --words set on a turn that has words in it")
+	}
+	if cov.Stats.Lines != wantLines {
+		t.Errorf("Stats.Lines = %d, want %d (the one newline in the fixture turn) — LinesKnown true with Lines "+
+			"left at zero would pass a test that only checks the flag", cov.Stats.Lines, wantLines)
+	}
+
+	c2 := &corpus{turns: c.turns, tiers: c.tiers}
+	f2 := newSearchFlags()
+	f2.All = true
+	if err := f2.check(); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	s2 := c2.search("words", f2, rank.Concentration)
+	if s2.scan.TurnsScanned == 0 {
+		t.Fatalf("scan = %+v, want a real scan over the one turn, not a vacuous zero", s2.scan)
+	}
+	cov2 := c2.coverageOf(s2.scan, f2, s2.skipped, nil, s2.notes...)
+	if cov2.Stats == nil {
+		t.Fatal("Stats is nil")
+	}
+	if cov2.Stats.LinesKnown || cov2.Stats.WordsKnown {
+		t.Errorf("Stats = %+v, want neither Known flag without --words", cov2.Stats)
+	}
+	if cov2.Stats.Words != 0 || cov2.Stats.Lines != 0 {
+		t.Errorf("Stats = %+v, want zero lines and words without --words", cov2.Stats)
+	}
+}
+
+// TestElapsedIsMeasuredSinceStartedAt proves ElapsedMS is a real
+// time.Since(startedAt), not a zero value that happens to be omitted.
+func TestElapsedIsMeasuredSinceStartedAt(t *testing.T) {
+	c := &corpus{startedAt: time.Now().Add(-5 * time.Millisecond)}
+	cov := c.coverageOf(scan.Result{}, nil, drops{}, nil)
+	if cov.Stats == nil {
+		t.Fatal("Stats is nil")
+	}
+	if cov.Stats.ElapsedMS <= 0 {
+		t.Errorf("ElapsedMS = %v, want greater than zero", cov.Stats.ElapsedMS)
+	}
+}
+
+// TestStatsSuppressionCoversEveryOutputSurface is the RECALL_NO_STATS off
+// switch, checked at every surface Coverage.Stats reaches rather than only
+// at render.Coverage.Lines: --brief and --fzf build their own body
+// independently of Text and JSON, so a suppression bug specific to either
+// would still leak the non-deterministic elapsed figure into a comparison
+// that expects byte-identical output.
+//
+// statsSuppressed is set directly rather than through RECALL_NO_STATS,
+// because it is read from the environment once at process start — the same
+// reason internal/scan's shard tests reassign minShardTurns directly instead
+// of setting its environment variable.
+func TestStatsSuppressionCoversEveryOutputSurface(t *testing.T) {
+	c := harness(t)
+	t.Chdir(c.Scratch)
+	was := statsSuppressed
+	t.Cleanup(func() { statsSuppressed = was })
+
+	const statsShape = "── scanned "
+
+	cases := []struct {
+		name string
+		run  func() (string, string)
+	}{
+		{"text", func() (string, string) {
+			out, errOut, err := callFind(t, fixtures.NeedleConversation, "--all")
+			if err != nil {
+				t.Fatalf("find: %v", err)
+			}
+			return out, errOut
+		}},
+		{"brief", func() (string, string) {
+			out, errOut, err := callFind(t, fixtures.NeedleConversation, "--all", "--brief")
+			if err != nil {
+				t.Fatalf("find --brief: %v", err)
+			}
+			return out, errOut
+		}},
+		{"fzf", func() (string, string) {
+			out, errOut, err := callFind(t, fixtures.NeedleConversation, "--all", "--fzf")
+			if err != nil {
+				t.Fatalf("find --fzf: %v", err)
+			}
+			return out, errOut
+		}},
+		{"json", func() (string, string) {
+			out, errOut, err := callFind(t, fixtures.NeedleConversation, "--all", "--json")
+			if err != nil {
+				t.Fatalf("find --json: %v", err)
+			}
+			return out, errOut
+		}},
+		{"jsonl", func() (string, string) {
+			out, errOut, err := callFind(t, fixtures.NeedleConversation, "--all", "--format", "jsonl")
+			if err != nil {
+				t.Fatalf("find --format jsonl: %v", err)
+			}
+			return out, errOut
+		}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			statsSuppressed = false
+			unsuppressedOut, unsuppressedErr := tc.run()
+			if !strings.Contains(unsuppressedOut+unsuppressedErr, statsShape) && !strings.Contains(unsuppressedOut+unsuppressedErr, `"stats"`) {
+				t.Errorf("no stats section with statsSuppressed=false:\nstdout: %s\nstderr: %s", unsuppressedOut, unsuppressedErr)
+			}
+
+			statsSuppressed = true
+			suppressedOut, suppressedErr := tc.run()
+			if strings.Contains(suppressedOut, statsShape) || strings.Contains(suppressedErr, statsShape) {
+				t.Errorf("statsSuppressed=true still printed a stats line:\nstdout: %s\nstderr: %s", suppressedOut, suppressedErr)
+			}
+			if strings.Contains(suppressedOut, `"stats"`) || strings.Contains(suppressedErr, `"stats"`) {
+				t.Errorf("statsSuppressed=true still emitted a stats JSON key:\nstdout: %s\nstderr: %s", suppressedOut, suppressedErr)
+			}
+		})
+	}
+}
+
+// TestIDsOmitsTheStatsLine holds --ids to its existing contract: session ids
+// alone, with no coverage line of any kind — --ids never reaches
+// Coverage.Lines, so the stats section cannot leak into it either.
+func TestIDsOmitsTheStatsLine(t *testing.T) {
+	c := harness(t)
+	t.Chdir(c.Scratch)
+
+	out, _, err := callFind(t, fixtures.NeedleConversation, "--all", "--ids")
+	if err != nil {
+		t.Fatalf("find --ids: %v", err)
+	}
+	if strings.Contains(out, "── scanned ") {
+		t.Errorf("--ids printed a stats line:\n%s", out)
+	}
+	if strings.Contains(out, "── ") {
+		t.Errorf("--ids printed a coverage line of any kind:\n%s", out)
+	}
+}
+
+// TestStatsLineIsLastAboveTheSizeFooterOnEveryVerb is the EARS acceptance
+// case for find, turns, when and show with a query: each ends its coverage
+// footer with the stats line, and the byte-size footer comes after it.
+func TestStatsLineIsLastAboveTheSizeFooterOnEveryVerb(t *testing.T) {
+	c := harness(t)
+	t.Chdir(c.Scratch)
+
+	cases := []struct {
+		verb string
+		run  func() (string, error)
+	}{
+		{"find", func() (string, error) { s, _, e := callFind(t, fixtures.NeedleConversation, "--all"); return s, e }},
+		{"turns", func() (string, error) { return callTurns(t, fixtures.NeedleConversation, "--all") }},
+		{"when", func() (string, error) { return callWhen(t, fixtures.NeedleConversation, "--all") }},
+		{"show", func() (string, error) { return callShow(t, fixtures.SessNeedle, fixtures.NeedleConversation) }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.verb, func(t *testing.T) {
+			out, err := tc.run()
+			if err != nil {
+				t.Fatalf("%s: %v", tc.verb, err)
+			}
+			lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+			if len(lines) < 2 {
+				t.Fatalf("%s: too few lines to hold a stats line and a size footer:\n%s", tc.verb, out)
+			}
+			sizeFooter := lines[len(lines)-1]
+			statsLine := lines[len(lines)-2]
+			if !strings.Contains(sizeFooter, " tokens") {
+				t.Errorf("%s: last line is not the size footer: %q", tc.verb, sizeFooter)
+			}
+			if !strings.HasPrefix(statsLine, "── scanned ") {
+				t.Errorf("%s: line above the size footer is not the stats line: %q", tc.verb, statsLine)
+			}
+		})
+	}
+}

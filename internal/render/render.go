@@ -78,8 +78,24 @@ func byteSize(n int) string {
 		return fmt.Sprintf("%d B", n)
 	case n < 1024*1024:
 		return fmt.Sprintf("%.1f KB", float64(n)/1024)
-	default:
+	case n < 1024*1024*1024:
 		return fmt.Sprintf("%.1f MB", float64(n)/(1024*1024))
+	default:
+		return fmt.Sprintf("%.1f GB", float64(n)/(1024*1024*1024))
+	}
+}
+
+// duration renders a stat's elapsed milliseconds at the precision a human
+// reads fastest at that scale. Rounding a sub-millisecond search to "0 ms"
+// would read as no work done, so it keeps a decimal there instead.
+func duration(ms float64) string {
+	switch {
+	case ms < 1:
+		return fmt.Sprintf("%.1f ms", ms)
+	case ms < 1000:
+		return fmt.Sprintf("%.0f ms", ms)
+	default:
+		return fmt.Sprintf("%.1f s", ms/1000)
 	}
 }
 

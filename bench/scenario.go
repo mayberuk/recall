@@ -73,6 +73,8 @@ func Scenarios(g Generated) ([]Scenario, error) {
 		find("--author", "--author", "assistant"),
 		find("--repo", "--repo", "repo01"),
 		find("--limit", "--limit", "25"),
+		find("--words", "--words"),
+		find("--all --words", "--all", "--words"),
 		{Name: "turns bare", Args: []string{"turns", term}, Dir: at},
 		{Name: "turns --budget", Args: []string{"turns", term, "--budget", "500"}, Dir: at},
 		{Name: "turns --brief", Args: []string{"turns", term, "--brief"}, Dir: at},
@@ -96,6 +98,10 @@ func (g Generated) Env(archiveDir string) []string {
 		"CLAUDE_PROJECTS_DIR=",
 		"CLAUDE_CODE_SESSION_ID=",
 		"NO_COLOR=1",
+		// Pinned rather than left to the ambient environment: a run started from
+		// inside a Codex or Cursor session would otherwise measure a different
+		// agent identity than every other run of this corpus does.
+		"RECALL_AGENT=claude-code",
 	)
 }
 
