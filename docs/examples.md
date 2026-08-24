@@ -242,3 +242,12 @@ and none was given, `127` the binary was not found (set `RECALL_BIN`). On a miss
 footer goes to stderr, because there is no header to put it in.
 
 Requires `fzf` for the interactive path only; the pipeline path shells out to nothing but recall.
+
+**fzf versions.** Two refinements need a recent fzf, and the function probes for each rather than
+demanding a version, because a flag fzf does not recognise is a hard error that would cost the
+whole finder. `--id-nth` lets `--track` follow a record's *identity* across reloads instead of a
+screen position, so the highlight stays on the same session as results change; without it the
+cursor holds a position instead. The `result-final` event updates the header once results settle
+rather than on every keystroke, and where it is missing the plain `result` event does the same job
+slightly more often. Both were added after fzf 0.67. Everything else the finder uses — including
+`change:reload-sync`, `transform-header` and `--gap` — works there.
