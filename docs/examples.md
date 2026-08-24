@@ -207,3 +207,38 @@ the archive holds — and the archive outliving the raw store is the entire poin
 Code deletes sessions after 90 days. `skew` names the largest gap between a file's mtime and the
 newest turn inside it. `doctor` is deliberately *not* an MCP tool: it answers a question about
 the archive, not about your past sessions.
+
+## `recall-fzf` — the interactive front end
+
+`shell/recall.zsh` is an fzf front end over the CLI. It runs recall's own commands and renders
+their output; it never searches, ranks or parses transcripts itself. There is nothing to build
+and nothing to set up per project — source it:
+
+```sh
+source shell/recall.zsh
+```
+
+```sh
+recall-fzf idempotency                       # live finder, prints the chosen session id
+recall-fzf idempotency --all                 # extra flags pass straight to `recall find`
+recall show "$(recall-fzf --ids idempotency | head -1)"
+```
+
+In the finder: typing re-searches, `enter` prints the session id and exits, `ctrl-o` opens the
+whole session in `$PAGER`, and `ctrl-/` toggles a preview of `recall show` for the highlighted
+row. fzf's own matching and sorting are disabled — recall did both already, and letting fzf
+re-rank would discard the concentration ordering that makes the first result the right one.
+
+**Without a terminal** the same function prints to stdout, so it works in a pipeline and from a
+script:
+
+```sh
+recall-fzf --ids <query>     # one session id per line
+recall-fzf <query>           # the ranked records, blank line between them
+```
+
+Exit codes match the CLI's: `0` hits, `1` searched and matched nothing, `2` a query was required
+and none was given, `127` the binary was not found (set `RECALL_BIN`). On a miss the coverage
+footer goes to stderr, because there is no header to put it in.
+
+Requires `fzf` for the interactive path only; the pipeline path shells out to nothing but recall.
