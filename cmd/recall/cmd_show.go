@@ -135,8 +135,8 @@ func show(args []string, out io.Writer) error {
 // Refusing outright is right for --full, which is the explicit give-me-
 // everything path. It is wrong for a plain `show <session> <query>`: a 119-turn
 // session at the default --around 3 renders 80 KB against a 64 KiB cap, so the
-// question shape docs/requirements.md forbids cutting — recover a conclusion
-// and its reasoning — would refuse more often than it answered.
+// question shape this verb exists to serve — recover a conclusion and its
+// reasoning — would refuse more often than it answered.
 func (c *corpus) fitShow(view *render.Show, windows []render.Window, res scan.Result, g *Globals, full bool) ([]byte, error) {
 	attempt := func(n int) ([]byte, error) {
 		view.Windows = windows[:n]

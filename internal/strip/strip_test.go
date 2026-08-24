@@ -44,8 +44,9 @@ func stripInto(t *testing.T, s *Stripper, c fixtures.Corpus, rel string) []schem
 }
 
 // want is one expected stripped turn. Every value derives from the fixture's own
-// JSON, checked against the tier and author rules in docs/design.md (Decisions,
-// Human-turn discrimination).
+// JSON, checked against the tier and author rules: a turn counts as typed by the
+// user when promptSource is "typed", plus the <command-args> payload of a
+// slash-command record. Classifying on content shape instead overcounts by 5x.
 type want struct {
 	uuid   string
 	tier   schema.Tier

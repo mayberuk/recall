@@ -130,8 +130,8 @@ func FuzzFold(f *testing.F) {
 
 // BenchmarkFold reports what the scan's hottest loop costs per byte, for the
 // shipping implementation and for the byte-at-a-time reference side by side —
-// the claim in docs/design.md is a ratio between these two, and a ratio nobody
-// can reproduce is a number nobody should trust.
+// the 3.6-6.2x ASCII speedup is a ratio between these two, and a ratio nobody can
+// reproduce is a number nobody should trust.
 //
 // The sizes bracket a turn: a prompt, an ordinary assistant answer, and an
 // injected summary. Mostly-ASCII is the real distribution, since a transcript is

@@ -17,10 +17,11 @@ func day(s string) time.Time {
 	return t
 }
 
-// TestCoverageLinesMatchThePinnedFormat holds the two lines to the format
-// pinned in docs/design.md's no-false-negatives decision, character for
-// character. The wording is the contract, not a presentation choice: a
-// caller reads "tool output NOT searched" to know its search was narrow.
+// TestCoverageLinesMatchThePinnedFormat holds the two lines to their pinned
+// format, character for character. The wording is the contract, not a
+// presentation choice: the no-false-negatives guarantee is absolute only over the
+// tier that was searched, and a caller reads "tool output NOT searched" to know
+// its search was narrow.
 func TestCoverageLinesMatchThePinnedFormat(t *testing.T) {
 	c := Coverage{
 		Sessions:         47,

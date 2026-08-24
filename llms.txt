@@ -21,11 +21,6 @@ register it with a coding agent using `recall mcp install <client>`.
 - [MCP integration](https://raw.githubusercontent.com/mayberuk/recall/main/docs/mcp.md): the five tools, every supported client's config path, what `install` writes
 - [For calling agents](https://raw.githubusercontent.com/mayberuk/recall/main/docs/agents.md): exit codes, `--json` and `--format jsonl`, the coverage contract, choosing a provider
 - [Changelog](https://raw.githubusercontent.com/mayberuk/recall/main/CHANGELOG.md): read before upgrading — v1.1 rebuilds the archive
-
-## Design
-
-- [Design record](https://raw.githubusercontent.com/mayberuk/recall/main/docs/design.md): every decision with the measurement behind it, and the alternatives it beat
-- [Requirements](https://raw.githubusercontent.com/mayberuk/recall/main/docs/requirements.md): the constraints that shaped the tool
 - [Benchmarks](https://raw.githubusercontent.com/mayberuk/recall/main/bench/RESULTS.md): reproducible figures against a seeded corpus, never a private store
 
 ## Contributing

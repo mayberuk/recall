@@ -64,7 +64,8 @@ make bench-compare  # allocation counts against the committed baseline
 `bench-gate` is what "before claiming any performance change" means in practice — quote its
 numbers. The architecture has no index *because* linear scanning measured fast; a claim that a
 change is faster (or that it didn't regress) needs one of these runs, not a fixture-only pass.
-Thresholds and the baselines they're measured against are in `docs/design.md`.
+The wall-clock thresholds are stated once in `bench/gates.go`, and the allocation baseline they
+are compared against is `bench/baselines/allocs.json`.
 
 A few packages carry a separate, opt-in gate behind an environment variable, because they assert
 against your actual `~/.claude/projects/` corpus rather than the generated one:
@@ -92,15 +93,15 @@ hand-rolled decoder would be. The alternative — reading the spec once and writ
 hand — is exactly the wrong side of the standard above: a protocol surface that changes out from
 under a hand-rolled parser is a maintenance cost this repo has no reason to carry itself.
 
-`docs/design.md` declined `golang.org/x/sys` as a *direct* dependency, on the grounds that
+This repo declined `golang.org/x/sys` as a *direct* dependency, on the grounds that
 `golang.org/x/sys/cpu` would break the one-dependency rule for a wider register on a step already
 fast enough. That rule was about direct dependencies. The SDK brings `golang.org/x/sys` in
 indirectly, along with seven other indirect modules — nobody chose those, they came along with
 the SDK the way `github.com/tidwall/match` and `github.com/tidwall/pretty` come along with
 `gjson`, and the gate only ever policed the direct set. Indirect is not the same as direct, but
 the rule's spirit is worth stating plainly rather than leaving it to inference: this repo still
-would not add `golang.org/x/sys/cpu` as a direct import for the reason `docs/design.md` gives,
-and the SDK's indirect pull of the package doesn't change that.
+would not add `golang.org/x/sys/cpu` as a direct import for that reason, and the SDK's indirect
+pull of the package doesn't change that.
 
 ## `~/.claude/projects` is read-only
 

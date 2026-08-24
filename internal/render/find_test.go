@@ -42,9 +42,9 @@ func sampleFind() Find {
 	}
 }
 
-// TestFindTextAlwaysEndsWithTheCoverageLine holds the contract in
-// docs/design.md: a command that searches without emitting the coverage line
-// is a defect, so this holds for a result set and a miss alike.
+// TestFindTextAlwaysEndsWithTheCoverageLine holds the coverage contract: a
+// command that searches without emitting the coverage line is a defect, so this
+// holds for a result set and a miss alike.
 func TestFindTextAlwaysEndsWithTheCoverageLine(t *testing.T) {
 	for _, tc := range []struct {
 		name string

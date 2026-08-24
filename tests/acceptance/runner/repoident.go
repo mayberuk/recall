@@ -7,7 +7,8 @@ import (
 	"strings"
 )
 
-// Repo identity computed from git directly, per docs/design.md's repo-identity decision.
+// Repo identity computed from git directly: the remote, walked up from cwd, so separate
+// checkouts and worktrees of one repo resolve to the same identity.
 // The harness derives the expected identity itself rather than reading it back from recall, which
 // is the difference between an assertion and a tautology.
 

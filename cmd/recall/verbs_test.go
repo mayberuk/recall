@@ -26,8 +26,8 @@ import (
 	"github.com/mayberuk/recall/internal/strip"
 )
 
-// The coverage declaration every searching verb emits by default, pinned in
-// docs/design.md's no-false-negatives decision.
+// The coverage declaration every searching verb emits by default. The wording is
+// pinned: no-false-negatives holds only over the tier searched, and this says which.
 const defaultTierDeclaration = "conversation only — tool output NOT searched (--results)"
 
 // harness materializes the shared fixture corpus and points recall at it. The
@@ -642,10 +642,11 @@ func suppressStatsForCapTest(t *testing.T) {
 	t.Cleanup(func() { statsSuppressed = was })
 }
 
-// TestShowFitsToTheCapAndDeclaresTheCut is the repair for a defect that made a
-// question shape docs/requirements.md forbids cutting fail by default: an
-// ordinary session at default settings refused outright. Bounded output is
-// still absolute — it fits, it does not truncate, and it says what it left out.
+// TestShowFitsToTheCapAndDeclaresTheCut is the repair for a defect that made one
+// of the four question shapes — recover a conclusion and its reasoning — fail by
+// default: an ordinary session at default settings refused outright. Bounded
+// output is still absolute — it fits, it does not truncate, and it says what it
+// left out.
 func TestShowFitsToTheCapAndDeclaresTheCut(t *testing.T) {
 	c := harness(t)
 	t.Chdir(c.Scratch)

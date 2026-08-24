@@ -167,7 +167,7 @@ is **0.34 ms** and a warm archive load **0.46 ms** — reproducible numbers, and
 takes them, live in [bench/RESULTS.md](bench/RESULTS.md).
 
 So there is no index: nothing to rebuild, nothing to go stale, no corruption class to guard
-against. `docs/design.md` records the SQLite FTS5 prototype that worked and lost on those grounds.
+against. A SQLite FTS5 prototype was built and worked — it lost on exactly those grounds.
 
 ## It tells you what it didn't search
 
@@ -207,8 +207,7 @@ Codex archives to its own tree, so adding it never rebuilds an existing Claude C
 | [docs/mcp.md](docs/mcp.md) | MCP tools, every client's config path, what `install` writes |
 | [docs/examples.md](docs/examples.md) | worked examples for all six commands |
 | [docs/agents.md](docs/agents.md) | exit codes, `--json`, the coverage contract — written for agents |
-| [docs/design.md](docs/design.md) | every decision, its measurement, and the alternatives it beat |
-| [docs/requirements.md](docs/requirements.md) | the constraints that shaped it |
+| [bench/RESULTS.md](bench/RESULTS.md) | every benchmark, its corpus, and the gates it ran against |
 | [CHANGELOG.md](CHANGELOG.md) | **read before upgrading** — v1.1 rebuilds the archive |
 | [AGENTS.md](AGENTS.md) | build, test and style contract for agents working *on* recall |
 

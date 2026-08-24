@@ -10,8 +10,10 @@ import (
 	"github.com/mayberuk/recall/internal/schema"
 )
 
-// walletRow is one row of docs/design.md §Ranking evidence, transcribed. Density
-// is the document's own ratio column — the rule that fails in both directions.
+// walletRow is one measured session from the corpus that settled ranking. Density
+// is hits over conversation turns — the rule that fails in both directions: raw
+// count crowns whichever session is largest, density crowns a 13-turn one that
+// mentions the term once.
 type walletRow struct {
 	session string
 	hits    int

@@ -71,6 +71,6 @@ A test that would pass against wrong behaviour is not coverage. Specifically:
 | `tests/differential` | byte-for-byte comparison against the `perf-baseline` tag |
 | `scripts/demo` | the fixed corpus behind every example in the docs |
 
-Depth on any of this: [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/design.md](docs/design.md).
-Design decisions are recorded there **with their measurement**; if you change one, change the
-record too.
+Depth on any of this: [CONTRIBUTING.md](CONTRIBUTING.md). Where a decision is load-bearing it is
+recorded **with its measurement** in the comment next to the code it constrains; if you change one,
+change that comment too.

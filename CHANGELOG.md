@@ -72,8 +72,8 @@ Nothing yet.
 - Searching is several times faster, with no change to what any command returns. Against 1.0.0 on
   the machine the work started on: a conversation-tier `find` 88 → 30 ms, an all-tier `find`
   460 → 93 ms, and a miss over every tier 549 → 113 ms. The corpus is still scanned in full and
-  there is still no index; the Decisions section of `docs/design.md` records what each change was
-  measured at.
+  there is still no index; `bench/RESULTS.md` carries the reproducible figures behind that, taken
+  against a seeded corpus rather than anyone's session store.
 - The archive format is now `recall-turns-3`, which adds per-tier block offsets so a decode can
   run on every core. **The first run after upgrading rebuilds the archive**, as it does for any
   format change. Until it has, `--no-update` refuses with exit 3 and points at `recall doctor`
@@ -85,8 +85,7 @@ Nothing yet.
   whose raw session is already gone does not survive the upgrade — silently, and with nothing to
   recover it from, which is the opposite of the guarantee an archive exists to give. Copy
   `$RECALL_HOME`, or `~/.local/share/recall` if that is unset, first. Keeping a v2 reader so the
-  bump migrates, or refusing a rebuild that would shrink the archive, is unresolved and tracked
-  under Open questions in `docs/design.md`.
+  bump migrates, or refusing a rebuild that would shrink the archive, is unresolved.
 
 ## [1.0.0] - 2026-08-15
 

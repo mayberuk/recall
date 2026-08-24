@@ -50,10 +50,10 @@ func TestShowEmitsTheCoverageLine(t *testing.T) {
 	}
 }
 
-// TestShowDeclaresThatItReturnedAWindowNotTheSession is the decision from
-// docs/design.md: a whole-session fetch is the multi-megabyte lookup the
-// requirements rule out, so the window and the session's real size are both
-// stated.
+// TestShowDeclaresThatItReturnedAWindowNotTheSession holds the fetch decision:
+// mean session conversation is ~67K tokens and the largest ~550K, so returning a
+// whole session is the unbounded lookup this tool exists to avoid. The window and
+// the session's real size are both stated.
 func TestShowDeclaresThatItReturnedAWindowNotTheSession(t *testing.T) {
 	got := string(sampleShow().Text())
 	if !strings.Contains(got, "── showing 3 of 119 turns (--around)") {
