@@ -54,6 +54,13 @@ version_stamp() {
   fi
 }
 
+# Installing a binary is not permission to edit another tool's config file, so
+# this script never registers recall with anything — it names the two commands
+# that do and leaves the choice with whoever ran it.
+next_steps() {
+  echo "install.sh: to reach recall from an agent, 'recall mcp config <client>' prints the entry and 'recall mcp install <client>' writes it — this script registers it with nothing"
+}
+
 installed_version() {
   if [[ -x "$target" ]]; then
     "$target" --version 2>/dev/null | head -n1 | awk '{print $2}'
@@ -68,6 +75,7 @@ echo "install.sh: build version for this checkout: ${new_stamp}"
 
 if [[ -n "${old_version}" && "${old_version}" == "${new_stamp}" && "${force}" -eq 0 ]]; then
   echo "install.sh: already current, nothing to do"
+  next_steps
   exit 0
 fi
 
@@ -108,3 +116,4 @@ elif [[ "${old_version}" == "${new_stamp}" ]]; then
 else
   echo "install.sh: upgraded recall from ${old_version} to ${new_stamp} at ${target}"
 fi
+next_steps

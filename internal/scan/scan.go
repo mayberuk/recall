@@ -111,8 +111,13 @@ type Result struct {
 	WordsScanned int64
 	WordsCounted bool
 
-	// Passes is how many walks over the corpus the search took: one to find
-	// hits, and one more when a zero-result search went back to explain itself.
+	// Passes is how many readings the coverage footer explains, not how many
+	// walks the corpus took: one to find hits, and one more when a zero-result
+	// search went back to explain itself. The explaining pass is itself two
+	// walks when the query has more than one term — counting each term, then
+	// gathering nearby words for the ones nothing carried — and the bytes of
+	// both are charged, so dividing BytesScanned by Passes does not give
+	// corpus size.
 	Passes int
 
 	// TurnsBySession is conversation turns per session, counted over every turn

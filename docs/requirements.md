@@ -94,6 +94,12 @@ Three questions were open when this brief was written and were settled during de
   budget on its own. `--full` stays available behind an explicit byte cap that refuses outright
   rather than silently truncating.
 - **Discovery is the main loop calling the tool directly; `recall guide` is the on-ramp.**
+  **Superseded** — recall now exposes five read-only tools over MCP and ships a skill that fires
+  on the question shapes, which is the plugin/MCP surface this entry rejected. The roster cost
+  was priced correctly; what it was weighed against was not, because the failure condition above
+  — "It is correct but nobody reaches for it" — is the one that materialised. The reasoning, and
+  what it cost, is the supersession entry in `docs/design.md` beside this decision's own. The
+  original, kept because the reversal only reads against it:
   Bounded, cheap output removes the reason transcript searches used to get delegated to a
   subagent in the first place, so making the capability known to the primary loop — a line in
   agent instructions, or running `recall guide` — is enough. Exposing it as a plugin/MCP tool

@@ -8,10 +8,13 @@
 coverage.out
 /dist/
 
-# Some developers ignore *.md machine-wide via core.excludesFile. Documentation
-# is part of this repository, so re-include it: without this, a new .md file is
-# silently skipped by `git add -A` on those machines and never reaches a commit.
+# Some developers ignore *.md and *.mdc machine-wide via core.excludesFile.
+# Documentation is part of this repository, and so is the Cursor rule shipped
+# under internal/mcp/assets — it is compiled into the binary by //go:embed, so
+# on those machines it would build and test green locally while never reaching
+# a commit, and vanish from every clone.
 !*.md
+!*.mdc
 
 # The design record from before this was public. Kept on disk, not published:
 # it describes an internal build process rather than the tool.

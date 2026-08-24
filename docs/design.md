@@ -257,6 +257,43 @@ turns around each hit rather than whole sessions.
   the user's own agent definitions is the backup. Rejected: exposing it in the tool roster as
   a plugin/MCP (best discovery but violates the CLI lock-in and costs roster context),
   main-loop-only with no backup (measured evidence of failing on this machine).
+- **recall is in the tool roster after all — this supersedes the discovery decision above** —
+  that rejection priced roster context against discovery and concluded the CLI's own on-ramp
+  was enough. The price was right; the question was wrong. The failure condition it was hedging
+  against is the one `docs/requirements.md` names — *"It is correct but nobody reaches for it"* —
+  and it is the one that materialised: lookups kept happening because somebody typed "go search
+  the transcripts", which is exactly the awareness channel the decision assumed would not be
+  needed. What ships is the option that was priced and not taken: five read-only tools
+  (`recall_find`, `recall_guide`, `recall_show`, `recall_turns`, `recall_when`) over stdio, plus
+  a skill whose description is written to fire on the question shapes rather than on the tool's
+  name. The CLI lock-in is untouched, which is the half of the old rejection that turns out not
+  to apply: `recall mcp serve` is a sub-command of the same binary, and every tool call runs the
+  same verb the command line runs, through the same `openCorpus` and coverage funnel, so the two
+  surfaces cannot disagree about what the corpus holds. The roster cost is paid down rather than
+  denied — five tools and not six, since `recall doctor` answers a question about archive
+  integrity and not about past sessions, and one of the five is the guide, which keeps the query
+  semantics out of the other four descriptions and costs nothing until it is called. Rejected:
+  the server without the skill (gets the tools listed, tells the model nothing about when
+  reaching for them beats re-deriving, which is the failure being fixed), the skill without the
+  server (leaves every lookup a shell round trip the roster never advertises).
+- **The archive refreshes on every tool call, not once when the server starts** — refreshing at
+  start would make every later call about 8 ms cheaper, which is the measured cost of a refresh
+  that finds nothing to do (see the GOMAXPROCS decision above: 7.9 ms). It is rejected anyway,
+  on two grounds. The first is that it reproduces a named failure condition from
+  `docs/requirements.md` verbatim — *"It is accurate only for older material, so the conversation
+  most likely to be asked about — a recent one — is the one it cannot see"* — and under a server
+  the session being asked about is very often the one still being written. The second is that it
+  needs a mental model this protocol revision forbids: `2026-07-28` says an open stdio connection
+  is not a session (`C-20260817-sessions-and-session-id-removed`), so corpus state cached across
+  calls is per-connection state under another name. The cost is 8 ms against a ~30 ms
+  conversation-tier query, under a quarter of it.
+- **Tool calls are serialized, one at a time** — the SDK dispatches concurrently, and the refresh
+  underneath a search writes to disk: two archive updates in one process is not a supported
+  state. Serialising also bounds peak memory to a single corpus load, and it is what makes the
+  per-call agent selection safe: a call naming a `provider` is answered by rewriting
+  `RECALL_AGENT` in the process environment and restoring it afterwards, which is only sound
+  while nothing else can be running. The cost is that a client cannot overlap two recall calls;
+  at ~30 ms each that is not worth engineering around.
 - **Repo identity is the git remote, walked up from `cwd`** — separate checkouts and worktrees of
   the same repo all resolve to the same remote. The walk must continue past *any* failure, not only a missing
   directory: an orphaned worktree with a pruned gitdir has a `.git` file that stops a naive walk
@@ -532,8 +569,8 @@ turns around each hit rather than whole sessions.
 
 Chosen on measurement taken on this machine 2026-08-13, not on precedent alone.
 
-- **Go, with `github.com/tidwall/gjson` as the only dependency.** Matches `fp` and `atlas`
-  (both Go, stdlib `flag`, Go 1.24), gives a ~5 ms process start that a per-query agent tool
+- **Go, with `github.com/tidwall/gjson` as the only dependency at the time.** Matches `fp` and `atlas`
+  (both Go, stdlib `flag`, Go 1.25), gives a ~5 ms process start that a per-query agent tool
   needs, and ships a single static binary with `CGO_ENABLED=0`. Measured full-corpus strip:
   **gjson 1.31 s (1011 MB/s) · Go stdlib `encoding/json` 7.21 s · `jq` 9.6 s.** gjson wins by
   parsing lazily — extracting only the requested path and skipping the rest — not by being a
@@ -626,21 +663,48 @@ separate jobs). Backing the archive up off-machine is a separate decision, delib
 taken here.
 
 ## Open questions
-For `/plan`:
-- **fzf field indexing with multi-line records** — `--delimiter`/`--with-nth` were designed for
-  one-line records and their interaction with `--read0` is the fiddly part of the interactive
-  surface. Spike it before committing to three-line results; a single dense line is the safe
-  fallback and still matches the reference screenshot.
-- ~~Which human-turn discriminator is correct~~ — **settled 2026-08-14 by spike**, see
-  §Human-turn discrimination. `promptSource == "typed"` plus `<command-args>` payloads; ~1,268
-  turns. Content-shape refuted.
-- **What the parser does with an unrecognised record type** — ignore, warn, or refuse. Ignoring
-  silently is how a false negative gets in through the back door across 24 versions.
-- **Archive integrity** — where it lives, and whether a corrupt or truncated archive is
-  *detectable* rather than merely wrong. Once raw files are deleted there is nothing to
-  reconcile against.
-- **Evaluate `ccs` first** — it covers the locate case at ~70ms and may be extendable.
-- **Implementation language** — `fp` and `atlas` are both Go here; precedent, not a decision.
+
+Still open:
+
+- **A format bump rebuilds rather than migrates, and a rebuild can shrink the archive.**
+  `openFrames` refuses any file whose magic is not the current one, and a refused store is
+  rebuilt from the raw corpus — which by then holds only what Claude Code's 90-day retention has
+  not deleted. So the one guarantee the archive exists to give, that it outlives the transcripts,
+  is the one an upgrade can silently take away. Two candidate fixes, neither taken: keep a reader
+  per old format so the bump migrates, or refuse a rebuild that would leave the archive with
+  fewer turns than it had. The refusal is cheaper and catches the case regardless of which format
+  pair caused it.
+- **The first query is the expensive one.** Caller-controlled volume assumes a caller who already
+  knows what to ask for, and that assumption is weakest exactly when the tool is most needed. The
+  lexical-expansion decision narrows it — a miss reports which terms are carried by nothing and
+  the corpus words nearest the ones that are — without resolving it. `docs/requirements.md`
+  carries the same question from the requirements side.
+- **Nothing measures `--words` on against off.** Counting lines and words is a second pass over
+  the scanned bytes, which is why it is opt-in; the 3% budget that forced it there was a
+  pre-registered gate, and no benchmark now compares the two, so a change that makes counting
+  always-on again would not be caught.
+- **`archive.Options.Strip` has no production caller.** Its own doc says it retires once the
+  searching verbs read through a `Provider`, which they now do. Only the benchmark harness and
+  the legacy-output comparison still pass it, and retiring it means deciding what happens to that
+  comparison.
+
+Settled by what shipped, previously open:
+
+- **fzf field indexing with multi-line records** — `find --fzf` emits NUL-terminated
+  `<session id>\x1f<block>` records and `shell/recall.zsh` is the front end, so `--read0` carries
+  the multi-line block and no field-splitting is needed.
+- **What the parser does with an unrecognised record type** — neither ignored nor refused:
+  counted by type and reported, so an unknown type is visible as a number rather than as a
+  missing result.
+- **Archive integrity** — `recall doctor` checks each tier's frames, the metadata and the cursor,
+  and reports the store as found *and* as it stands after a forced refresh. The two disagreeing
+  is the alarm; a first run, where there was nothing to have been corrupt, says so rather than
+  passing.
+- **Evaluate `ccs` first** — moot; recall shipped and covers all four question shapes.
+- **Implementation language** — Go, on the measurement recorded above rather than on precedent.
+- ~~Which human-turn discriminator is correct~~ — settled 2026-08-14 by spike, see §Human-turn
+  discrimination. `promptSource == "typed"` plus `<command-args>` payloads; ~1,268 turns.
+  Content-shape refuted.
 
 Resolved by review, previously open:
 - Thinking blocks: **include the 2.09 MB of thinking text** (~6% archive cost, not 6×), and

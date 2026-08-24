@@ -1,0 +1,13 @@
+{
+  "name": "recall",
+  "owner": {
+    "name": "mayberuk"
+  },
+  "plugins": [
+    {
+      "name": "recall",
+      "source": "./",
+      "description": "search past coding-agent sessions on this machine, and reach for it before re-deriving something a past session already settled"
+    }
+  ]
+}
