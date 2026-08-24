@@ -5,7 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mayberuk/recall/internal/archive"
 	"github.com/mayberuk/recall/internal/fperr"
+	"github.com/mayberuk/recall/internal/schema"
 )
 
 // A verb binds its own flags onto this same FlagSet later, without editing this file.
@@ -177,5 +179,83 @@ func TestCapPrefersTheTighterOfBudgetAndMaxBytes(t *testing.T) {
 				t.Errorf("Cap() = %d, want %d", got, tc.want)
 			}
 		})
+	}
+}
+
+// --provider governs every searching verb now, not just doctor, and its help
+// text has to name all of them rather than singling doctor out as the one
+// verb that honours the flag.
+func TestProviderHelpNamesEveryVerbItGoverns(t *testing.T) {
+	fs := newFlags("find")
+	NewGlobals().Bind(fs)
+	f := fs.Lookup("provider")
+	if f == nil {
+		t.Fatal("--provider is not bound")
+	}
+	usage := f.Usage
+	if strings.Contains(usage, "still read claude-code only") {
+		t.Errorf("--provider help still claims find, turns, when and show ignore it: %q", usage)
+	}
+	for _, verb := range []string{"find", "turns", "when", "show", "doctor"} {
+		if !strings.Contains(usage, verb) {
+			t.Errorf("--provider help does not name %s among the verbs it governs: %q", verb, usage)
+		}
+	}
+}
+
+func TestNewGlobalsDefaultsProviderToAuto(t *testing.T) {
+	if got := NewGlobals().Provider; got != ProviderAuto {
+		t.Errorf("Provider = %q, want %q", got, ProviderAuto)
+	}
+}
+
+func TestProviderBindsOntoAVerbFlagSet(t *testing.T) {
+	g := NewGlobals()
+	fs := newFlags("doctor")
+	g.Bind(fs)
+	if err := parseFlags(fs, []string{"--provider", "codex"}); err != nil {
+		t.Fatal(err)
+	}
+	if g.Provider != "codex" {
+		t.Errorf("Provider = %q, want codex", g.Provider)
+	}
+}
+
+// TestCheckAcceptsAZeroValueProviderWithoutCallingSetSelection guards fact
+// that archive.SetSelection("") is itself an argument error: NewGlobals's
+// "auto" default and a bare zero-value Globals both have to reach Check
+// without ever making that call, or every default invocation of every verb
+// would fail.
+func TestCheckAcceptsAZeroValueProviderWithoutCallingSetSelection(t *testing.T) {
+	g := &Globals{MaxBytes: DefaultMaxBytes, Format: FormatText}
+	if err := g.Check(); err != nil {
+		t.Errorf("a zero-value --provider was rejected: %v", err)
+	}
+	if err := NewGlobals().Check(); err != nil {
+		t.Errorf("the auto default --provider was rejected: %v", err)
+	}
+}
+
+// TestCheckWiresAnExplicitProviderIntoTheSelection proves --provider is not
+// just stored on Globals: Check hands it to archive.SetSelection, the one
+// path RECALL_AGENT also resolves through, so a later archive.Select sees it
+// and rejects a name with no registered provider.
+func TestCheckWiresAnExplicitProviderIntoTheSelection(t *testing.T) {
+	t.Cleanup(func() { _ = archive.SetSelection(string(schema.AgentClaudeCode)) })
+
+	g := &Globals{MaxBytes: DefaultMaxBytes, Format: FormatText, Provider: "no-such-agent"}
+	if err := g.Check(); err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	_, err := archive.Select()
+	if err == nil {
+		t.Fatal("Select resolved an agent with no registered provider")
+	}
+	var coded *fperr.Error
+	if !errors.As(err, &coded) || coded.Code != fperr.ArgError {
+		t.Errorf("error = %v, want code %s", err, fperr.ArgError)
+	}
+	if !strings.Contains(err.Error(), "registered agents are") {
+		t.Errorf("error does not name the registered agents: %v", err)
 	}
 }

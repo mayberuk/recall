@@ -17,7 +17,6 @@ import (
 	"github.com/mayberuk/recall/internal/repo"
 	"github.com/mayberuk/recall/internal/scan"
 	"github.com/mayberuk/recall/internal/schema"
-	"github.com/mayberuk/recall/internal/strip"
 )
 
 // statsSuppressed turns the stats footer off for both binaries the
@@ -197,7 +196,7 @@ func queryOf(words []string, verb string) (string, error) {
 // corpus is the archive as one command sees it: the turns of the tiers it
 // asked for, both coverage boundaries, and whether the refresh from disk ran.
 type corpus struct {
-	store     *archive.Store
+	group     *archive.Group
 	turns     []schema.Turn
 	tiers     []schema.Tier
 	unknown   []string
@@ -260,44 +259,57 @@ type elsewhereHit struct {
 	terms []render.Term
 }
 
-// openCorpus wires the real strip and repo implementations into the archive
-// and loads only the tiers about to be searched — the conversation tier alone
-// is 51 MB of the archive's 261 MB, and reading the rest is the whole
-// difference between a 14 ms query and a 2.3 s one.
+// openCorpus resolves which agent's transcripts this run reads, opens a store
+// for each and loads only the tiers about to be searched — the conversation
+// tier alone is 51 MB of the archive's 261 MB, and reading the rest is the
+// whole difference between a 14 ms query and a 2.3 s one.
 //
-// The pairing of the injected functions is load-bearing: Strip is called from
-// the archive's worker pool and strip.Stripper is safe for that, while Resolve
-// runs single-threaded because resolving an identity reads git state.
+// The group derives each store from the selection, so nothing here names a
+// session root or hands over a decoder: either would pin the read to
+// claude-code whatever the caller asked for. Resolve is still injected and
+// still runs single-threaded, because resolving an identity reads git state.
+//
+// The stores decode through the registry's own provider instances rather than
+// freshly built ones, the way `recall doctor` does. A registered provider
+// accumulates what it has decoded across a process, which doctor reports and a
+// search does not.
 func openCorpus(noUpdate bool, tiers []schema.Tier) (*corpus, error) {
 	startedAt := time.Now()
-	store, err := archive.Open(archive.Options{Strip: strip.New().Strip, Resolve: repo.New().Repo})
+	sel, err := archive.Select()
 	if err != nil {
 		return nil, err
 	}
-	c := &corpus{store: store, tiers: tiers, startedAt: startedAt}
+	if sel.Fallback {
+		fmt.Fprintf(os.Stderr, "recall: %s\n", sel.Reason)
+	}
+	group, err := archive.OpenGroup(sel, archive.Options{Resolve: repo.New().Repo})
+	if err != nil {
+		return nil, err
+	}
+	c := &corpus{group: group, tiers: tiers, startedAt: startedAt}
 	// The cold build takes a second or two and used to be silent, which reads
 	// as a hang to a caller that has never run the tool before. It is announced
 	// before the work, not after it.
-	if !noUpdate && store.WrittenAt().IsZero() {
+	if !noUpdate && group.WrittenAt().IsZero() {
 		fmt.Fprintln(os.Stderr, "recall: building the archive from the whole session store — this happens once and takes a second or two")
 	}
 	if noUpdate {
-		cov, err := store.Coverage()
+		cov, err := group.Coverage()
 		if err != nil {
 			return nil, fperr.New(fperr.BadArchive,
 				"there is no archive to search yet; run the same command without --no-update to build one")
 		}
 		c.coverage = cov
-		c.refreshedAgo = ago(time.Since(store.WrittenAt()))
+		c.refreshedAgo = ago(time.Since(group.WrittenAt()))
 	} else {
-		res, err := store.Update()
+		res, err := group.Update()
 		if err != nil {
 			return nil, err
 		}
 		c.coverage, c.refreshed = res.Coverage, true
 		c.refreshedAgo = "just now"
 	}
-	turns, err := store.Turns(tiers...)
+	turns, err := group.Turns(tiers...)
 	if err != nil {
 		return nil, err
 	}

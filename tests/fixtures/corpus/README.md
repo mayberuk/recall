@@ -56,6 +56,18 @@ approximation. Constants live in `internal/fixtures`.
 | `snorplewick` | conversation | needle (subagent) | a conclusion reached inside a subagent, folded into the parent session |
 | `thrumbaloo` | conversation | remoteless | the only hit outside the default repo scope — the zero-result probe must find it |
 | `plimwarden` | conversation | dup | **one record uuid carried by two files**: a scan without uuid dedup reports two hits where the contract says one |
+| `vorplextin` | conversation | needle | shares a record with `hobznatchet` below: a `text` block and a `tool_use` block in one `message.content` array |
+| `hobznatchet` | invocation | needle | the same record as `vorplextin` — a decoder that keeps only a record's first content block loses one of the two |
+
+`hobznatchet`'s record is the only one in the corpus carrying both a conversation-tier and an
+invocation-tier turn; every other record carries one or the other.
+
+## Codex corpus
+
+`internal/fixtures.MaterializeCodex(t)` builds a separate, synthetic Codex CLI store in process
+rather than from files under this directory — see `internal/fixtures/codex.go`. Its plain-rollout
+row carries `quenlaphor` in the assistant message, the only planted token in either corpus: a hit
+on it proves a search reached the Codex store and not claude-code's.
 
 ## Counts the manifest asserts
 

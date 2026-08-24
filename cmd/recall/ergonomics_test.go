@@ -111,6 +111,33 @@ func TestTheHelpAndGuideStateWhatDecidedTheObservedFailure(t *testing.T) {
 	}
 }
 
+// A caller reading the guide or the top-level help must not be told the
+// archive holds only Claude Code's sessions — selection can resolve to any
+// registered agent, and every verb honours it.
+func TestGuideAndUsageDescribeTheSelectedAgentNotClaudeCodeOnly(t *testing.T) {
+	var guideOut bytes.Buffer
+	if err := guide(nil, &guideOut); err != nil {
+		t.Fatalf("guide: %v", err)
+	}
+	var usageOut bytes.Buffer
+	printUsage(&usageOut)
+
+	for _, tc := range []struct {
+		name string
+		text string
+	}{
+		{"guide", guideOut.String()},
+		{"top-level usage", usageOut.String()},
+	} {
+		if strings.Contains(tc.text, "Claude Code session") {
+			t.Errorf("%s still promises Claude Code sessions only:\n%s", tc.name, tc.text)
+		}
+		if !strings.Contains(tc.text, "selected agent") {
+			t.Errorf("%s does not say it searches the selected agent's sessions:\n%s", tc.name, tc.text)
+		}
+	}
+}
+
 func TestGuideFitsInOneRead(t *testing.T) {
 	var out bytes.Buffer
 	if err := guide(nil, &out); err != nil {

@@ -2,9 +2,11 @@
 // per-file byte cursors that make an update incremental, and the two coverage
 // boundaries.
 //
-// It owns the corpus walk because it owns the cursors, but it is built beside
-// internal/strip and internal/repo rather than after them, so it takes both as
-// injected functions. Nothing here ever writes under ~/.claude/projects.
+// It owns the corpus walk because it owns the cursors, but neither the record
+// formats nor the repo identities are its: a Provider says which paths are
+// session files and how to decode one, and an injected resolver names the
+// checkout a turn was typed in. Nothing here ever writes under a session
+// store.
 package archive
 
 import (
@@ -25,17 +27,41 @@ const (
 	checksumsName = "checksums"
 )
 
-// Options configures a Store. Strip and Resolve are injected because archive is
-// built in parallel with the packages that provide them; both are required, so a
-// missing one fails at Open rather than silently producing turns with no repo.
+// Options configures a Store. Resolve is injected because archive is built in
+// parallel with the package that provides it and is required, so a missing one
+// fails at Open rather than silently producing turns with no repo.
 //
-// Strip is called from several goroutines at once and must be safe for that.
-// Resolve is not: it runs after the reads, on one goroutine, because resolving a
-// repo identity starts a git process.
+// Which agent the store holds is settled by the first of these that is set:
+// Provider, Agent, then the run's own Selection — except that Root or Strip
+// takes the store to claude-code without consulting the selection at all.
 type Options struct {
-	Dir     string
-	Root    string
-	Strip   func(jsonl.Record) ([]schema.Turn, bool)
+	// Dir is the archive root. Every agent but claude-code keeps its files in
+	// a subdirectory of it; claude-code keeps the root itself, because that is
+	// where it kept them before there were other agents. Zero derives it from
+	// the environment.
+	Dir string
+
+	// Root is the session store to walk. Zero asks the provider for its own,
+	// which is the only answer that can be right for an agent this caller did
+	// not name.
+	Root string
+
+	// Agent names which registered provider to read through.
+	Agent schema.Agent
+
+	// Provider supplies one directly, for a caller holding an unregistered
+	// one.
+	Provider Provider
+
+	// Strip is the claude-code seam that predates providers: passing it opts
+	// the store out of agent selection entirely and pins it to claude-code's
+	// agent, root and directory. It is called from several goroutines at once
+	// and must be safe for that. The searching verbs move to Provider when
+	// internal/strip registers one, and this goes with them.
+	Strip func(jsonl.Record) ([]schema.Turn, bool)
+
+	// Resolve fills a turn's repo identity from its cwd. It runs after the
+	// reads, on one goroutine, because resolving one starts a git process.
 	Resolve func(cwd string) string
 
 	// Force re-reads every source file regardless of its cursor mark. `doctor`
@@ -46,15 +72,16 @@ type Options struct {
 	Workers int
 }
 
-// Store is one archive directory: the compressed turns, the cursor, and the
-// metadata that carries the integrity checksum.
+// Store is one agent's archive directory: the compressed turns, the cursor,
+// and the metadata that carries the integrity checksum.
 type Store struct {
-	dir     string
-	root    string
-	strip   func(jsonl.Record) ([]schema.Turn, bool)
-	resolve func(cwd string) string
-	force   bool
-	workers int
+	dir      string
+	root     string
+	agent    schema.Agent
+	provider Provider
+	resolve  func(cwd string) string
+	force    bool
+	workers  int
 
 	// onListed and onStatted reproduce the cleanup race in tests. Claude Code
 	// deletes transcripts at startup, so a file can vanish between the walk and
@@ -103,41 +130,100 @@ func DefaultRoot() (string, error) {
 	return filepath.Join(home, ".claude", "projects"), nil
 }
 
-// Open prepares the archive directory, creating it if it is absent.
+// Open prepares one agent's archive directory, creating it if it is absent.
 func Open(opt Options) (*Store, error) {
-	if opt.Strip == nil {
-		return nil, fperr.New(fperr.Internal, "archive: no strip function was injected")
-	}
 	if opt.Resolve == nil {
 		return nil, fperr.New(fperr.Internal, "archive: no repo resolver was injected")
 	}
-	dir := opt.Dir
-	if dir == "" {
+	provider, err := opt.provider()
+	if err != nil {
+		return nil, err
+	}
+	base := opt.Dir
+	if base == "" {
 		d, err := Dir()
 		if err != nil {
 			return nil, err
 		}
-		dir = d
+		base = d
 	}
 	root := opt.Root
 	if root == "" {
-		r, err := DefaultRoot()
+		r, err := provider.Root()
 		if err != nil {
 			return nil, err
 		}
 		root = r
 	}
+	dir := agentDir(base, provider.Agent())
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fperr.New(fperr.AtomicWriteFailed, "cannot create %s: %v", dir, err)
 	}
 	return &Store{
-		dir:     dir,
-		root:    root,
-		strip:   opt.Strip,
-		resolve: opt.Resolve,
-		force:   opt.Force,
-		workers: opt.Workers,
+		dir:      dir,
+		root:     root,
+		agent:    provider.Agent(),
+		provider: provider,
+		resolve:  opt.Resolve,
+		force:    opt.Force,
+		workers:  opt.Workers,
 	}, nil
+}
+
+// provider settles which agent the store reads, first match winning. Root and
+// Strip are the legacy claude-code seam and short-circuit the selection: a
+// caller that named a session store, or handed over a strip function, asked
+// for claude-code whatever the run's agent selection resolves to.
+func (opt Options) provider() (Provider, error) {
+	switch {
+	case opt.Provider != nil:
+		return opt.Provider, nil
+	case opt.Agent != "":
+		p, ok := ProviderFor(opt.Agent)
+		if !ok {
+			return nil, fperr.New(fperr.ArgError,
+				"unknown agent %q; registered agents are %s", opt.Agent, registeredAgentNames())
+		}
+		return p, nil
+	case opt.Root == "" && opt.Strip == nil:
+		return selectedProvider()
+	case opt.Strip == nil:
+		return nil, fperr.New(fperr.Internal, "archive: no strip function was injected")
+	}
+	return stripProvider{strip: opt.Strip}, nil
+}
+
+// selectedProvider resolves the run's selection down to the one provider a
+// single store can read. Several agents is not a store, and answering from the
+// first of them would be a partial answer reported as a whole one.
+func selectedProvider() (Provider, error) {
+	sel, err := Select()
+	if err != nil {
+		return nil, err
+	}
+	switch len(sel.Agents) {
+	case 0:
+		return nil, fperr.New(fperr.CorpusUnreadable, "no agent has a session store to read (%s)", sel.Reason)
+	case 1:
+		p, ok := ProviderFor(sel.Agents[0])
+		if !ok {
+			return nil, fperr.New(fperr.ArgError, "no provider is registered for %s", sel.Agents[0])
+		}
+		return p, nil
+	}
+	return nil, fperr.New(fperr.ArgError,
+		"the selection names %d agents (%s); open them with OpenGroup", len(sel.Agents), sel.Reason)
+}
+
+// agentDir is where one agent's archive sits under the archive root.
+// claude-code keeps the root itself: its files were written there before there
+// was anything else to read, and moving them would force every existing
+// archive to rebuild from a session store cleanup may since have emptied.
+func agentDir(base string, a schema.Agent) string {
+	if a == schema.AgentClaudeCode {
+		return base
+	}
+	return filepath.Join(base, "agents", string(a))
 }
 
 // Dir is the archive directory.
@@ -145,6 +231,9 @@ func (s *Store) Dir() string { return s.dir }
 
 // Root is the corpus the Store walks.
 func (s *Store) Root() string { return s.root }
+
+// Agent is whose sessions the Store holds.
+func (s *Store) Agent() schema.Agent { return s.agent }
 
 // TierPath is the file holding one tier's turns. They are stored uncompressed
 // and framed so a reader slices records in place: a query pays for the tiers it

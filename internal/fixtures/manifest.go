@@ -133,3 +133,57 @@ type DupUUID struct {
 	Session string
 	Files   []string
 }
+
+// CodexQuirk names the reason one row of the generated Codex corpus exists.
+// internal/strip's Codex decoder has to survive every one of these.
+type CodexQuirk string
+
+const (
+	// CodexQuirkPlain is an ordinary rollout: session_meta, a conversation
+	// exchange, and one tool call/result pair.
+	CodexQuirkPlain CodexQuirk = "plain"
+	// CodexQuirkEventMsgDuplicate carries one user message as both a
+	// response_item and an event_msg; only the response_item is a turn.
+	CodexQuirkEventMsgDuplicate CodexQuirk = "event-msg-duplicate"
+	// CodexQuirkCompacted carries a compacted record with a summary message
+	// and a one-item replacement_history.
+	CodexQuirkCompacted CodexQuirk = "compacted"
+	// CodexQuirkMissingSessionMeta has no session_meta record at all, so the
+	// thread id can only come from the file name.
+	CodexQuirkMissingSessionMeta CodexQuirk = "missing-session-meta"
+	// CodexQuirkSubagent carries agent_nickname in session_meta.
+	CodexQuirkSubagent CodexQuirk = "subagent"
+	// CodexQuirkZstdOpaque is a .jsonl.zst file: opaque bytes, never
+	// decompressed, present only to be enumerated and skipped.
+	CodexQuirkZstdOpaque CodexQuirk = "zstd-opaque"
+	// CodexQuirkRepoIdentity has a cwd under the same git scratch shape
+	// Materialize builds, so it resolves to the identity a Claude Code
+	// session in that checkout resolves to.
+	CodexQuirkRepoIdentity CodexQuirk = "repo-identity"
+	// CodexQuirkEncryptedReasoning carries a reasoning item with
+	// encrypted_content and an empty summary, which yields no turn.
+	CodexQuirkEncryptedReasoning CodexQuirk = "encrypted-reasoning"
+)
+
+// CodexRow is one generated rollout file and what a decoder reading it must
+// produce. ExpectedTurns is stated by hand against the records codex.go
+// writes for this row, never read back from a decoder — see codex.go for the
+// derivation of each value.
+type CodexRow struct {
+	Quirk    CodexQuirk
+	File     string // Root-relative path to the rollout file
+	ThreadID string
+	// CWD is the cwd the row's session_meta carries, empty when the row plants
+	// none (CodexQuirkMissingSessionMeta has no session_meta to carry one).
+	CWD string
+	// Opaque marks a file that must never be parsed as JSON at all
+	// (CodexQuirkZstdOpaque); every other row is valid JSONL.
+	Opaque        bool
+	ExpectedTurns int
+}
+
+// CodexManifest describes the Codex corpus MaterializeCodex builds: one
+// CodexRow per quirk internal/strip's Codex decoder must handle.
+type CodexManifest struct {
+	Rows []CodexRow
+}

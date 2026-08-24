@@ -432,6 +432,101 @@ turns around each hit rather than whole sessions.
   find (p=0.95) and +0.52% on an all-tier find (p=0.65), with identical minima. The hot paths are
   syscalls, `memmove`, gjson parsing and tight byte loops, none of which are what PGO's
   devirtualization and cross-edge inlining improve. Revisit only if the hot profile changes shape.
+- **The provider seam is an anonymous interface, and registration lives in `cmd/recall`** —
+  `archive.Provider` names where an agent's transcripts live, which paths under it are
+  transcripts, and how to decode them, and it is implemented in `internal/strip`, never imported
+  there: `archive` stays the package that owns the corpus walk, `strip` stays the package that
+  knows the record formats. What makes that hold is that `archive.Decoder` is a type alias to an
+  anonymous interface literal rather than a named type — Go only treats a returned interface as
+  identical for structural interface satisfaction when the literal shape matches exactly, so a
+  named `archive.Decoder` would force `strip` to import `archive` purely to spell its own method's
+  return type, inverting the direction this design pins. `strip` declares its own alias with the
+  same method set for the same reason. Registration happens in `cmd/recall`'s own `init()` rather
+  than `strip`'s: `internal/archive/perf_test.go` is an in-package test that already imports
+  `strip`, so a `strip` that registered itself on import would close the cycle from either
+  direction it could be broken. `main` registering a driver it depends on, the way a database
+  driver does, was the only place left that owns both packages already.
+- **Adding a second agent changes no on-disk format** — a Codex archive is a sibling
+  `agents/codex/` directory in the same tier-file shape claude-code already writes, not a new
+  field or a new magic string; `recall-turns-3` still heads every tier file. That mattered because
+  a format bump forces every archive to rebuild from the live corpus on its next run, and raw
+  session files past the 90-day retention window (see the retention decision above) are already
+  gone from disk by the time an unrelated rebuild would happen — a rebuild reads the corpus, not
+  the old archive, so it cannot recover a turn only the archive still remembers. Claude-code's own
+  files stay at the archive root rather than moving under a matching `agents/claude-code/`, for
+  the same reason: they were written there before there was anywhere else to put them, and moving
+  them would force the one archive every existing install already has to rebuild for no functional
+  gain.
+- **Detection is a first-match-wins probe, cheapest and most certain first, and `CLAUDECODE` is
+  never among the matches** — `CODEX_THREAD_ID` or `CODEX_SESSION_ID`, then `GEMINI_CLI`, then
+  `CURSOR_AGENT`, then claude-code by default. Codex is checked on `CODEX_THREAD_ID` first because
+  the locally installed binary was measured not to set `CODEX_SESSION_ID` at all — a version
+  behind the one Codex's own docs describe (`C-20260817-codex-local-binary-lacks-session-id`) — so
+  a probe that trusted only the documented variable would misdetect Codex on this and any
+  similarly-versioned install. `CLAUDECODE=1` is real and reliable
+  (`C-20260817-claude-code-sets-claudecode-1`) but is read only to populate what `doctor` reports
+  as detected, never to select: it is set for every subprocess Claude Code spawns, including a
+  nested agent it runs as a Bash-tool child, so treating it as a selector would misdetect that
+  nested agent as Claude Code itself. `GEMINI_CLI=1` and `CURSOR_AGENT=1` are equally reliable
+  (`C-20260817-gemini-cli-sets-gemini-cli-1`, `C-20260817-cursor-agent-sets-cursor-agent-1`) and
+  are detected today even though neither has a registered provider yet — see the scope note in
+  `docs/requirements.md`.
+- **An explicit agent with no provider is an error; a merely detected one falls back and says
+  so** — naming `--provider codex` (or `RECALL_AGENT=codex`) when no `codex` provider is
+  registered refuses outright, because silently answering from claude-code instead would be a
+  wrong answer reported as a right one. A detected agent is judged differently: one inferred from
+  the environment whose session root does not exist on disk (`CODEX_HOME` unset and no
+  `~/.codex/sessions`, say) falls back to claude-code and reports why, because nothing was
+  promised about an agent nobody explicitly asked for — the caller asked a general question, not
+  for one corpus by name, and refusing to answer at all would be a worse failure than answering
+  from the corpus that does exist.
+- **Codex's `response_item` records are archived; `event_msg` is counted and dropped** — a Codex
+  rollout carries the same conversation twice: `response_item`/`message` with `role` `user` or
+  `assistant` is the model-facing turn, and `event_msg`/`user_message` restates the same text for
+  the UI (`C-20260817-codex-event-msg-duplicates-turns`, a 269:99 split in the report's own
+  sample). Archiving both would show every user turn twice, so only `response_item` is read;
+  `event_msg` is tallied as `Telemetry` so `doctor` can report the size of the double-count a naive
+  reader would have made. This rests on an assumption the fixtures do not exercise either way: if
+  Codex ever writes a user message only to the event stream, with no `response_item` twin, those
+  words never reach the archive. Nothing sampled for the research report proves or disproves that
+  this happens — it is a known boundary of the decision, not a closed question.
+- **The archive's dedup key for a Codex record is its byte offset, not its ordinal position** — a
+  rollout record carries no id of its own, and the archive deduplicates every tier on
+  `(session, uuid)`, so a decoder has to synthesise both halves. An ordinal — the count of records
+  this decoder has been handed — was tried and measured wrong: a resumed read is primed with the
+  file's head and then continues from a byte cursor, so a counter numbers the same record
+  differently on an appending pass than it would on a whole re-read, and because the archive dedups
+  on that key, a rebuild after new records land would keep both numberings as two copies of every
+  turn past the cursor. A record's own byte offset in the file is stable under both kinds of read,
+  so the synthesised id is the offset plus an FNV-1a hash of the raw line: the offset alone would
+  collapse distinct content that a fork restarts numbering from zero for, and the hash alone would
+  collapse a genuinely repeated message.
+- **A `.jsonl.zst` rollout is counted and left unread, never decompressed** — Codex's background
+  worker rewrites cold rollouts to zstd-compressed files as part of its migration to a paginated
+  JSONL-plus-SQLite thread store (`C-20260817-codex-zstd-and-sqlite-migration`); nothing in
+  `recall` otherwise needs a zstd library, and adding one solely to read files Codex itself
+  considers cold was not worth a second dependency (see the gjson decision below on what earns
+  that place). The transcript check recognises the suffix, adds it to a `Compressed` count, and
+  excludes it from the walk — handing a compressed file to the JSONL reader would report a file of
+  malformed lines rather than the unread file it is. `recall doctor` declares the count rather than
+  staying silent about it.
+- **A `compacted` record's `replacement_history` is not archived a second time** — Codex keeps the
+  pre-compaction turns inside the compaction summary itself when it writes one
+  (`C-20260817-codex-compacted-keeps-replacement-history`). Those turns already reached the
+  archive from their own earlier `response_item` records when they were live, so re-reading them
+  out of `replacement_history` would put the same words in the store twice. The count is kept —
+  `Replaced` — so `doctor` can report how much a naive reader would have double-archived, without
+  archiving it.
+- **Codex's day-nested rollout directories needed no new walk, and no index of the dates** —
+  `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` (`C-20260817-codex-sessions-dated-layout`) nests
+  three directories deeper than claude-code's one-directory-per-checkout layout, but the corpus
+  walk was already written to assume nothing about depth: it recurses under every top-level entry
+  until it finds files, and the top-level fan-out that makes the walk concurrent (see the
+  GOMAXPROCS decision above) just sees fewer, larger top-level entries for Codex than it does for
+  claude-code. Nothing was added to interpret or index the date directories — they carry no
+  identity of their own, since a rollout's cwd and thread id live in its `session_meta` record and
+  nowhere in its path — so a reader that already walked whole was already correct, only with less
+  concurrency to exploit at the top.
 
 ## Stack
 

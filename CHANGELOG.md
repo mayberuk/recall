@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `recall` now reads more than one coding agent's session store. Codex CLI is registered
+  alongside Claude Code: rollouts under `~/.codex/sessions` (or `$CODEX_HOME/sessions`) archive
+  to their own `agents/codex/` tree, built separately the first time anything asks for it — an
+  existing Claude Code archive is untouched and **requires no rebuild** to pick this up.
+  `--provider` (or `RECALL_AGENT`) chooses which agent's transcripts a run reads: `auto` detects
+  from the environment, an agent name pins one, `all` reads every registered agent whose session
+  store exists. `find`, `turns`, `when` and `show` still read Claude Code only for now and refuse
+  an explicit `--provider`/`RECALL_AGENT` naming anything else; `recall doctor` reads whatever
+  `--provider` resolves to. See the README for detection order and the rest of the detail.
+
 ### Changed
 
 - Searching is several times faster, with no change to what any command returns. Against 1.0.0 on

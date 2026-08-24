@@ -107,6 +107,10 @@ func TestGoldenNeedleFile(t *testing.T) {
 			"<command-name>/plugin</command-name>\n            <command-message>plugin</command-message>\n            <command-args></command-args>"},
 		{"aaaaaaaa-0000-4000-8000-000000000007", schema.TierConversation, schema.AuthorHuman,
 			"Good. Write that down before we lose it."},
+		{"aaaaaaaa-0000-4000-8000-000000000008", schema.TierConversation, schema.AuthorAssistant,
+			"Filed a follow-up: the vorplextin cleanup is still open."},
+		{"aaaaaaaa-0000-4000-8000-000000000008", schema.TierInvocation, schema.AuthorAssistant,
+			"Bash rg -n hobznatchet internal/"},
 	})
 
 	for _, turn := range got {

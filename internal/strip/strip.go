@@ -1,4 +1,5 @@
-// Package strip turns transcript records into stripped turns.
+// Package strip turns a registered agent's transcript records into stripped
+// turns.
 //
 // It is the only place raw JSONL becomes searchable text; nothing downstream
 // parses a record again. The funnel it implements takes 1.29 GB to 36.5 MB by

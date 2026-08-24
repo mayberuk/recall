@@ -14,12 +14,24 @@ const (
 	NeedleSubagent     = "snorplewick"
 	NeedleRemoteless   = "thrumbaloo"
 	NeedleDuplicated   = "plimwarden"
+
+	// NeedleMultiTierText and NeedleMultiTierTool sit on the same record: a
+	// text block and a tool_use block in one message.content array. A decoder
+	// that keeps only a record's first content block loses one of them.
+	NeedleMultiTierText = "vorplextin"
+	NeedleMultiTierTool = "hobznatchet"
+
+	// NeedleCodexConversation is the only planted token in the Codex corpus,
+	// so a hit on it proves a search reached the Codex store and not
+	// claude-code's by coincidence.
+	NeedleCodexConversation = "quenlaphor"
 )
 
 // Record uuids the manifest refers to.
 const (
 	uuidNeedleAssistant = "aaaaaaaa-0000-4000-8000-000000000002"
 	uuidNeedleToolUse   = "aaaaaaaa-0000-4000-8000-000000000003"
+	uuidNeedleMultiTier = "aaaaaaaa-0000-4000-8000-000000000008"
 	uuidSubagentText    = "bbbbbbbb-0000-4000-8000-000000000002"
 	uuidRemotelessText  = "ffffffff-0000-4000-8000-000000000002"
 	uuidDupAssistant    = "cccccccc-0000-4000-8000-000000000002"
@@ -34,6 +46,8 @@ func manifest(scratch string) Manifest {
 			{NeedleConversation, SessNeedle, uuidNeedleAssistant, TierConversation, []string{FileNeedle}},
 			{NeedleThinking, SessNeedle, uuidNeedleAssistant, TierConversation, []string{FileNeedle}},
 			{NeedleInvocation, SessNeedle, uuidNeedleToolUse, TierInvocation, []string{FileNeedle}},
+			{NeedleMultiTierText, SessNeedle, uuidNeedleMultiTier, TierConversation, []string{FileNeedle}},
+			{NeedleMultiTierTool, SessNeedle, uuidNeedleMultiTier, TierInvocation, []string{FileNeedle}},
 			{NeedleResult, SessHugeResult, uuidHugeResult, TierResult, []string{FileHugeResult}},
 			{NeedleSubagent, SessNeedle, uuidSubagentText, TierConversation, []string{FileSubagent}},
 			{NeedleRemoteless, SessRemoteless, uuidRemotelessText, TierConversation, []string{FileRemoteless}},

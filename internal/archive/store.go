@@ -342,6 +342,7 @@ func (s *Store) readTier(tier schema.Tier, hint int, dst []entry) ([]entry, bool
 		if f.bad {
 			return dst[:len(dst)-1], false
 		}
+		e.Origin = s.agent
 	}
 	return dst, true
 }
@@ -446,18 +447,29 @@ func (s *Store) readTurns(tier schema.Tier, dst []schema.Turn) ([]schema.Turn, b
 	if !ok {
 		return dst, false
 	}
+	// The frames carry no agent: a tier file belongs to one store, so framing
+	// it would write the same short string a few hundred thousand times. The
+	// store stamps it back on afterwards instead.
+	base := len(dst)
 	if out, ok := decodeBlocks(data, marks, dst); ok {
-		return out, true
+		return s.stampOrigin(out, base), true
 	}
 	for !f.done() {
 		dst = append(dst, schema.Turn{})
 		f.turn(&dst[len(dst)-1])
 		f.num() // Seq, framed per turn and unread here
 		if f.bad {
-			return dst[:len(dst)-1], false
+			return s.stampOrigin(dst[:len(dst)-1], base), false
 		}
 	}
-	return dst, true
+	return s.stampOrigin(dst, base), true
+}
+
+func (s *Store) stampOrigin(turns []schema.Turn, from int) []schema.Turn {
+	for i := from; i < len(turns); i++ {
+		turns[i].Origin = s.agent
+	}
+	return turns
 }
 
 // Turns reads the archived turns of the given tiers, or every tier when none is

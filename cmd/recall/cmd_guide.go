@@ -25,7 +25,7 @@ func guide(args []string, out io.Writer) error {
 	return err
 }
 
-const guideText = `recall — what was said in any past Claude Code session on this machine.
+const guideText = `recall — what was said in any past session of the selected agent, on this machine.
 One query reaches every checkout of a repo, not just the one you are standing in.
 
 WHICH COMMAND

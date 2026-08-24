@@ -1,16 +1,23 @@
 package archive
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/mayberuk/recall/internal/fixtures"
+	"github.com/mayberuk/recall/internal/jsonl"
+	"github.com/mayberuk/recall/internal/repo"
 	"github.com/mayberuk/recall/internal/schema"
 )
 
@@ -890,5 +897,344 @@ func TestOpenRefusesWithoutTheInjectedFunctions(t *testing.T) {
 	}
 	if _, err := Open(Options{Dir: t.TempDir(), Root: t.TempDir(), Strip: stubStrip}); err == nil {
 		t.Error("Open accepted a nil repo resolver")
+	}
+}
+
+// headDecoder is the shape a provider has when it files sessions by date: the
+// session identity arrives in the file's first record and in no other, so a
+// decoder that never sees that record cannot say whose session the rest of the
+// file is.
+type headDecoder struct {
+	session string
+}
+
+func (d *headDecoder) Turns(rec jsonl.Record) ([]schema.Turn, bool) {
+	if id := rec.SessionID(); id != "" {
+		d.session = id
+	}
+	turns, ok := stubStrip(rec)
+	if !ok {
+		return nil, false
+	}
+	for i := range turns {
+		turns[i].Session = d.session
+	}
+	return turns, true
+}
+
+// A resumed read starts at a byte cursor, so the identifying first record is
+// behind it. The head is replayed into the decoder for context and the turns
+// it yields are dropped: they were archived by the pass that first read the
+// file, and keeping them would be a duplicate that only dedup catches.
+func TestResumedReadPrimesTheDecoderWithoutRearchivingTheHead(t *testing.T) {
+	const (
+		session = "5d0b7c46-8d05-4e93-a712-00000000000f"
+		rel     = "2026/08/09/rollout.jsonl"
+	)
+	// The head carries no uuid, so nothing dedups a second copy of it away:
+	// the count below reports a re-archived head instead of hiding it.
+	root := tinyCorpus(t, map[string]string{
+		rel: strings.Join([]string{
+			grownRecord(session, "", "2026-08-09T10:00:00.000Z", "head"),
+			grownRecord("", "5d0b7c46-0000-4000-8000-000000000001", "2026-08-09T10:00:01.000Z", "alpha"),
+		}, "\n"),
+	})
+	provider := stubbedProvider{
+		agent: schema.AgentCodex,
+		root:  root,
+		head:  true,
+		decode: func(string) Decoder {
+			return &headDecoder{}
+		},
+	}
+	s := providerStore(t, t.TempDir(), provider)
+	if got := mustUpdate(t, s).TurnsAdded; got != 2 {
+		t.Fatalf("the cold pass archived %d turns, want the head and the record after it", got)
+	}
+
+	appendRecord(t, filepath.Join(root, rel),
+		grownRecord("", "5d0b7c46-0000-4000-8000-000000000002", "2026-08-09T10:00:02.000Z", "bravo"))
+	res := mustUpdate(t, s)
+	if res.FilesAppended != 1 {
+		t.Fatalf("the second pass appended %d files and read %d whole; it must resume from the mark",
+			res.FilesAppended, res.FilesWhole)
+	}
+	if res.TurnsAdded != 1 {
+		t.Errorf("the resumed pass archived %d turns, want only the appended record; the primed head must not be archived again",
+			res.TurnsAdded)
+	}
+
+	heads, bravo := 0, schema.Turn{}
+	for _, turn := range mustTurns(t, s) {
+		switch turn.Text {
+		case "head":
+			heads++
+		case "bravo":
+			bravo = turn
+		}
+	}
+	if heads != 1 {
+		t.Errorf("the archive holds %d copies of the head record's turn, want 1", heads)
+	}
+	if bravo.Session != session {
+		t.Errorf("the appended record was archived under session %q, want %q from the file's head",
+			bravo.Session, session)
+	}
+}
+
+// NeedsHead is the gate that keeps a resumed read from opening and decoding a
+// file's head all over again: a provider that answers false must never see
+// its first record a second time once the read resumes past it.
+func TestNeedsHeadFalseKeepsAResumedReadFromPrimingTheHead(t *testing.T) {
+	const (
+		session  = "5d0b7c46-8d05-4e93-a712-00000000000f"
+		headUUID = "5d0b7c46-0000-4000-8000-00000000000a"
+		rel      = "-p/" + session + ".jsonl"
+	)
+	root := tinyCorpus(t, map[string]string{
+		rel: grownRecord(session, headUUID, "2026-08-09T10:00:00.000Z", "head"),
+	})
+
+	var mu sync.Mutex
+	var sawHead bool
+	provider := stubbedProvider{
+		agent: schema.AgentCodex,
+		root:  root,
+		head:  false,
+		decode: func(string) Decoder {
+			return stripDecoder(func(rec jsonl.Record) ([]schema.Turn, bool) {
+				if rec.UUID() == headUUID {
+					mu.Lock()
+					sawHead = true
+					mu.Unlock()
+				}
+				return stubStrip(rec)
+			})
+		},
+	}
+	s := providerStore(t, t.TempDir(), provider)
+	mustUpdate(t, s)
+
+	mu.Lock()
+	sawHead = false
+	mu.Unlock()
+
+	appendRecord(t, filepath.Join(root, rel),
+		grownRecord(session, "5d0b7c46-0000-4000-8000-00000000000b", "2026-08-09T10:00:01.000Z", "alpha"))
+	res := mustUpdate(t, s)
+	if res.FilesAppended != 1 {
+		t.Fatalf("the second pass appended %d files, want 1; it must resume rather than reread the whole file", res.FilesAppended)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if sawHead {
+		t.Error("the resumed read handed its decoder the head record even though NeedsHead is false")
+	}
+}
+
+// relDecoder records which relative path it was built for, so a test can pin
+// that Decoder is called per file rather than once for the whole store.
+type relDecoder struct {
+	rel string
+}
+
+func (d *relDecoder) Turns(rec jsonl.Record) ([]schema.Turn, bool) { return stubStrip(rec) }
+
+// The per-file-decoder claim is otherwise unasserted: nothing pins that
+// Decoder is called with each file's own relative path, or that two files
+// don't end up sharing one decoder instance.
+func TestUpdateBuildsADistinctDecoderPerFileNamedByItsRelativePath(t *testing.T) {
+	const (
+		sessA = "5d0b7c46-8d05-4e93-a712-00000000000a"
+		sessB = "5d0b7c46-8d05-4e93-a712-00000000000b"
+	)
+	relA := "-p/" + sessA + ".jsonl"
+	relB := "-p/" + sessB + ".jsonl"
+	root := tinyCorpus(t, map[string]string{
+		relA: grownRecord(sessA, "5d0b7c46-0000-4000-8000-00000000000a", "2026-08-09T10:00:00.000Z", "alpha"),
+		relB: grownRecord(sessB, "5d0b7c46-0000-4000-8000-00000000000b", "2026-08-09T10:00:01.000Z", "bravo"),
+	})
+
+	var mu sync.Mutex
+	var made []*relDecoder
+	provider := stubbedProvider{
+		agent: schema.AgentCodex,
+		root:  root,
+		decode: func(rel string) Decoder {
+			d := &relDecoder{rel: rel}
+			mu.Lock()
+			made = append(made, d)
+			mu.Unlock()
+			return d
+		},
+	}
+	s := providerStore(t, t.TempDir(), provider)
+	mustUpdate(t, s)
+
+	if len(made) != 2 {
+		t.Fatalf("Decoder was called %d times, want one per file", len(made))
+	}
+	if made[0] == made[1] {
+		t.Fatal("both files were decoded through the same decoder instance, want a distinct one per file")
+	}
+	gotRels := map[string]bool{made[0].rel: true, made[1].rel: true}
+	if !gotRels[relA] || !gotRels[relB] {
+		t.Errorf("decoders were built for %v, want %q and %q", gotRels, relA, relB)
+	}
+}
+
+// A provider that reads the project identity out of the transcript knows more
+// than a walk up from the cwd can, so the cwd resolver must not overwrite it.
+func TestDecodedRepoIdentitySurvivesTheCWDResolver(t *testing.T) {
+	const session = "5d0b7c46-8d05-4e93-a712-00000000000f"
+	root := tinyCorpus(t, map[string]string{
+		"-p/" + session + ".jsonl": strings.Join([]string{
+			grownRecord(session, "5d0b7c46-0000-4000-8000-000000000001", "2026-08-09T10:00:00.000Z", "known"),
+			grownRecord(session, "5d0b7c46-0000-4000-8000-000000000002", "2026-08-09T10:00:01.000Z", "unknown"),
+		}, "\n"),
+	})
+	s := providerStore(t, t.TempDir(), stubbedProvider{
+		agent: schema.AgentCodex,
+		root:  root,
+		decode: func(string) Decoder {
+			return stripDecoder(func(rec jsonl.Record) ([]schema.Turn, bool) {
+				turns, ok := stubStrip(rec)
+				if !ok {
+					return nil, false
+				}
+				for i := range turns {
+					if turns[i].Text == "known" {
+						turns[i].Repo = "decoded/identity"
+					}
+				}
+				return turns, true
+			})
+		},
+	})
+	mustUpdate(t, s)
+
+	want := map[string]string{"known": "decoded/identity", "unknown": stubResolve("/nowhere/normal")}
+	for _, turn := range mustTurns(t, s) {
+		if got := turn.Repo; got != want[turn.Text] {
+			t.Errorf("turn %q carries repo %q, want %q", turn.Text, got, want[turn.Text])
+		}
+	}
+}
+
+// A provider owns its own layout, so what counts as a transcript is its answer
+// and not a hardcoded extension: a sidecar beside a session file is not one.
+func TestTheWalkAsksTheProviderWhichPathsAreTranscripts(t *testing.T) {
+	const session = "5d0b7c46-8d05-4e93-a712-00000000000f"
+	root := tinyCorpus(t, map[string]string{
+		"2026/08/09/" + session + ".jsonl":       grownRecord(session, "5d0b7c46-0000-4000-8000-000000000001", "2026-08-09T10:00:00.000Z", "kept"),
+		"2026/08/09/" + session + ".index.jsonl": grownRecord(session, "5d0b7c46-0000-4000-8000-000000000002", "2026-08-09T10:00:01.000Z", "skipped"),
+	})
+	s := providerStore(t, t.TempDir(), transcriptFilter{
+		stubbedProvider: stubbedProvider{agent: schema.AgentCodex, root: root},
+	})
+	res := mustUpdate(t, s)
+
+	if res.FilesSeen != 1 {
+		t.Errorf("the walk saw %d files, want only the one the provider claims", res.FilesSeen)
+	}
+	if holds(mustTurns(t, s), "skipped") {
+		t.Error("a path the provider does not call a transcript was archived anyway")
+	}
+}
+
+// transcriptFilter is a provider whose layout keeps a sidecar next to each
+// session file under the same extension.
+type transcriptFilter struct {
+	stubbedProvider
+}
+
+func (transcriptFilter) IsTranscript(rel string) bool {
+	return strings.HasSuffix(rel, ".jsonl") && !strings.HasSuffix(rel, ".index.jsonl")
+}
+
+// frozenScratch stands in for the corpus's scratch root, which is a temporary
+// directory and so differs on every run. It reaches the archive through every
+// turn's cwd, and freezing it is what makes a digest over the archive bytes a
+// constant a test can pin rather than a number recomputed from whatever the
+// code happens to do today.
+const frozenScratch = "/frozen/scratch"
+
+func frozenCorpus(t *testing.T) string {
+	t.Helper()
+	c := corpus(t)
+	root := filepath.Join(t.TempDir(), "frozen")
+	from, to := []byte(c.Scratch), []byte(frozenScratch)
+	err := filepath.WalkDir(c.Root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(c.Root, p)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(root, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, bytes.ReplaceAll(data, from, to), 0o644)
+	})
+	if err != nil {
+		t.Fatalf("freeze the corpus: %v", err)
+	}
+	return root
+}
+
+// frozenTierDigests is what the fixture corpus frames to. The frames are not
+// allowed to move on their own: an archive that no longer matches its own
+// metadata rebuilds from a session store cleanup may already have emptied.
+//
+// Only the corpus growing may move these, and re-recording them is only honest
+// once that has been shown to be the cause. The multi-tier record added to the
+// needle session moved all three, because tieredStrip emits one turn per tier
+// from every record; with that one record taken back out, the previous digests
+// still held, which is what separates a corpus that grew from a frame that
+// shifted.
+var frozenTierDigests = map[schema.Tier]string{
+	schema.TierConversation: "a06d04a1106b27876259a3f8210706e4d9feb7855f142dfdefd645fe38ba9b5d",
+	schema.TierInvocation:   "affd2a5de8dcd5aef9d95bea36377cedc7f3f263534958c4f7c908684793408f",
+	schema.TierResult:       "699caa6b58714f65ab4d0828a245430160edb463520c15ed08bfa0cee4cbe5af",
+}
+
+func TestFrozenCorpusFramesToTheRecordedBytes(t *testing.T) {
+	s := storeWith(t, frozenCorpus(t), "", tieredStrip)
+	mustUpdate(t, s)
+
+	for _, tier := range tierFiles {
+		sum := sha256.Sum256(tierBytes(t, s, tier))
+		if got := hex.EncodeToString(sum[:]); got != frozenTierDigests[tier] {
+			t.Errorf("%s tier digest = %s, want %s", tier, got, frozenTierDigests[tier])
+		}
+	}
+}
+
+// The archive's bytes are a function of the corpus, and the one input to them
+// that is not a file on disk is the injected repo resolver: it shells out to
+// git, so anything it answers inconsistently — under load, or between two
+// processes — moves the archive without the corpus moving. Two cold builds in
+// one run are what hold it to a fixed answer.
+func TestTwoColdBuildsWithTheRealResolverAgree(t *testing.T) {
+	c := corpus(t)
+	build := func() *Store {
+		s, err := Open(Options{Dir: t.TempDir(), Root: c.Root, Strip: stubStrip, Resolve: repo.New().Repo})
+		if err != nil {
+			t.Fatalf("Open: %v", err)
+		}
+		mustUpdate(t, s)
+		return s
+	}
+
+	first, second := build(), build()
+	if !bytes.Equal(archived(t, first), archived(t, second)) {
+		t.Error("two cold builds of one corpus produced different archive bytes")
 	}
 }
