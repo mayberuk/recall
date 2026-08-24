@@ -104,8 +104,8 @@ func TestWhenRejectsAnEmptyQuery(t *testing.T) {
 }
 
 func TestDoctorRejectsInvalidGlobalsBeforeOpeningTheArchive(t *testing.T) {
-	var out bytes.Buffer
-	err := doctor([]string{"--max-bytes", "0"}, &out)
+	var out, errOut bytes.Buffer
+	err := doctor([]string{"--max-bytes", "0"}, &out, &errOut)
 	requireArgError(t, err)
 }
 

@@ -110,18 +110,21 @@ func (s *Store) list() ([]source, error) {
 	return out, nil
 }
 
-// walkTop collects the transcripts under one immediate child of the root. Depth
-// is not assumed: the store puts one directory per checkout directly under the
-// root, but a nested layout still walks whole, just without the concurrency.
+// walkTop collects the transcripts under one immediate child of the root.
+// Which paths those are is the provider's to say, since only it knows what
+// else its own directory holds. Depth is not assumed: claude-code puts one
+// directory per checkout directly under the root and codex nests a day at a
+// time, and a deeper layout still walks whole, just with less of the
+// concurrency.
 func (s *Store) walkTop(top fs.DirEntry) ([]source, error) {
 	path := filepath.Join(s.root, top.Name())
 	if !top.IsDir() {
-		if filepath.Ext(path) != ".jsonl" {
-			return nil, nil
-		}
 		src, err := s.sourceAt(path)
 		if err != nil {
 			return nil, err
+		}
+		if !s.provider.IsTranscript(src.rel) {
+			return nil, nil
 		}
 		return []source{src}, nil
 	}
@@ -136,12 +139,15 @@ func (s *Store) walkTop(top fs.DirEntry) ([]source, error) {
 			}
 			return err
 		}
-		if d.IsDir() || filepath.Ext(p) != ".jsonl" {
+		if d.IsDir() {
 			return nil
 		}
 		src, serr := s.sourceAt(p)
 		if serr != nil {
 			return serr
+		}
+		if !s.provider.IsTranscript(src.rel) {
+			return nil
 		}
 		out = append(out, src)
 		return nil
@@ -247,10 +253,14 @@ func (s *Store) Update() (Result, error) {
 	cov.MaxFileSkew, cov.MaxSkewFile = skew(now)
 
 	// Repo resolution runs here, after the parallel reads, so the injected
-	// resolver is only ever called from one goroutine: it shells out to git.
+	// resolver is only ever called from one goroutine: it shells out to git. A
+	// turn that arrived with an identity keeps it — a decoder that read one
+	// out of the transcript knows more than a walk from the cwd can.
 	repos := map[string]string{}
 	for i := held; i < len(entries); i++ {
-		entries[i].Repo = s.repo(entries[i].CWD, repos)
+		if entries[i].Repo == "" {
+			entries[i].Repo = s.repo(entries[i].CWD, repos)
+		}
 	}
 
 	return s.commit(res, cov, prev, entries, now, rewrite, touched)
@@ -442,15 +452,26 @@ func eachIndex(n, workers int, fn func(i int)) {
 	wg.Wait()
 }
 
-// read strips one file from offset. The returned mark is where the next run
+// read decodes one file from offset. The returned mark is where the next run
 // resumes: it stops short of a trailing malformed line, because a transcript
 // being appended to ends mid-record and advancing past that line would skip the
 // record for good once it is complete.
+//
+// The decoder is built per file and never shared: a provider whose records
+// only make sense in sequence needs somewhere to hold that state, and the
+// files around this one are being read on other goroutines.
 func (s *Store) read(src source, from int64) readResult {
 	if s.onStatted != nil {
 		s.onStatted(src.path)
 	}
 	res := readResult{mark: from}
+	dec := s.provider.Decoder(src.rel)
+	if from > 0 && s.provider.NeedsHead() {
+		if err := primeHead(dec, src.path); err != nil {
+			res.err = err
+			return res
+		}
+	}
 	r, err := jsonl.OpenAt(src.path, from)
 	if err != nil {
 		res.err = err
@@ -472,11 +493,12 @@ func (s *Store) read(src source, from int64) readResult {
 		res.tally.Observe(rec)
 		res.records++
 
-		turns, keep := s.strip(rec)
+		turns, keep := dec.Turns(rec)
 		if !keep {
 			continue
 		}
 		for i, t := range turns {
+			t.Origin = s.agent
 			res.entries = append(res.entries, entry{Turn: t, Seq: i})
 			if when, terr := time.Parse(time.RFC3339, t.TS); terr == nil {
 				if n := when.UnixNano(); res.oldest == 0 || n < res.oldest {
@@ -490,6 +512,29 @@ func (s *Store) read(src source, from int64) readResult {
 	}
 	res.err = r.Err()
 	return res
+}
+
+// primeHead hands a resumed decoder the file's first record. A provider that
+// files sessions by date rather than by encoded cwd carries the project
+// identity in that record alone, so a read that starts at a byte cursor would
+// otherwise decode the rest of the file without knowing whose session it is.
+//
+// Whatever it decodes from that record is discarded. Those turns were archived
+// by the pass that first read the file, and keeping them would leave dedup to
+// notice rather than never making them.
+func primeHead(dec Decoder, path string) error {
+	r, err := jsonl.OpenAt(path, 0)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = r.Close() }()
+	for r.Next() {
+		if rec, ok := r.Record(); ok {
+			dec.Turns(rec)
+			break
+		}
+	}
+	return r.Err()
 }
 
 // dedupKey identifies one record inside one session. Session is part of the key

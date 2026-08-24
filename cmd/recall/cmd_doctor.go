@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 
 	"github.com/mayberuk/recall/internal/archive"
 	"github.com/mayberuk/recall/internal/fperr"
+	"github.com/mayberuk/recall/internal/jsonl"
 	"github.com/mayberuk/recall/internal/render"
 	"github.com/mayberuk/recall/internal/repo"
+	"github.com/mayberuk/recall/internal/schema"
 	"github.com/mayberuk/recall/internal/strip"
 )
 
@@ -21,14 +24,15 @@ func newDoctorCmd() (*flag.FlagSet, *Globals) {
 }
 
 func init() {
-	Register("doctor", func(args []string) error { return doctor(args, os.Stdout) })
+	Register("doctor", func(args []string) error { return doctor(args, os.Stdout, os.Stderr) })
 	fs, _ := newDoctorCmd()
 	Describe("doctor", "", "check the archive's integrity and what the corpus looks like", fs,
 		"recall doctor",
-		"recall doctor --json")
+		"recall doctor --json",
+		"recall doctor --provider all")
 }
 
-func doctor(args []string, out io.Writer) error {
+func doctor(args []string, out, errOut io.Writer) error {
 	fs, g := newDoctorCmd()
 	if _, err := parseArgs(fs, args); err != nil {
 		return err
@@ -37,18 +41,85 @@ func doctor(args []string, out io.Writer) error {
 		return err
 	}
 
-	// Force is what makes the authorship counts below mean anything: an
-	// incremental pass hands strip only the records that changed, so
-	// TypedLabelsMissing would read false on a corpus that had lost the field.
-	stripper := strip.New()
-	store, err := archive.Open(archive.Options{
-		Strip:   stripper.Strip,
-		Resolve: repo.New().Repo,
-		Force:   true,
-	})
+	sel, err := archive.Select()
 	if err != nil {
 		return err
 	}
+	if sel.Fallback {
+		fmt.Fprintf(errOut, "recall: %s\n", sel.Reason)
+	}
+	if len(sel.Agents) == 0 {
+		return fperr.New(fperr.CorpusUnreadable, "no agent has a session store to read (%s)", sel.Reason)
+	}
+
+	// One resolver, shared across every store this run opens: a checkout
+	// resolves to the same repo identity regardless of which agent's session
+	// named it, so nothing is lost by sharing the cache, and a fresh resolver
+	// per store would just pay for the same git reads twice.
+	resolver := repo.New()
+
+	// Labelled only when there is more than one block to tell apart — the
+	// default, single-agent run prints exactly what it always has.
+	label := len(sel.Agents) > 1
+
+	var totalProblems int
+	var anyFailed bool
+	for _, agent := range sel.Agents {
+		provider, err := freshProviderFor(agent)
+		if err != nil {
+			return err
+		}
+		store, err := archive.Open(archive.Options{
+			Provider: provider,
+			Resolve:  resolver.Repo,
+			Force:    true,
+		})
+		if err != nil {
+			return err
+		}
+		view, err := doctorReport(store, provider)
+		if err != nil {
+			return err
+		}
+		if label {
+			fmt.Fprintf(out, "%-11s%s\n", "agent", agent)
+		}
+		if err := emit(out, g, view.Text(), view); err != nil {
+			return err
+		}
+		if !view.OK {
+			anyFailed = true
+			totalProblems += len(view.Problems)
+		}
+	}
+	if anyFailed {
+		return fperr.New(fperr.BadArchive, "archive integrity check failed: %d %s",
+			totalProblems, plural(totalProblems, "problem", "problems"))
+	}
+	return nil
+}
+
+// freshProviderFor constructs a provider that has decoded nothing yet. Doctor
+// builds one per run rather than reaching for the registry's own instance:
+// the registry's is a process-lifetime singleton, and reusing it here would
+// accumulate one run's counts into the next.
+func freshProviderFor(agent schema.Agent) (archive.Provider, error) {
+	switch agent {
+	case schema.AgentClaudeCode:
+		return strip.ClaudeCode(), nil
+	case schema.AgentCodex:
+		return strip.Codex(), nil
+	default:
+		return nil, fperr.New(fperr.Internal, "doctor: no provider constructor for agent %q", agent)
+	}
+}
+
+// doctorReport is one store's whole doctor result.
+func doctorReport(store *archive.Store, provider archive.Provider) (render.Doctor, error) {
+	// Force is what makes the authorship counts below mean anything: an
+	// incremental pass hands the provider only the records that changed, so
+	// TypedLabelsMissing would read false on a corpus that had lost the field.
+	//
 	// Verified before the refresh, because Force rewrites the metadata and the
 	// checksums: verifying afterwards would check this run's repair rather than
 	// the store as found, and corruption that repairs itself unreported is the
@@ -64,22 +135,23 @@ func doctor(args []string, out io.Writer) error {
 	case !exists(store.ChecksumsPath()):
 		upgraded = true
 	default:
+		var err error
 		found, err = store.Verify()
 		if err != nil {
-			return err
+			return render.Doctor{}, err
 		}
 		checked = true
 	}
 
 	res, err := store.Update()
 	if err != nil {
-		return err
+		return render.Doctor{}, err
 	}
 	rep, err := store.Verify()
 	if err != nil {
-		return err
+		return render.Doctor{}, err
 	}
-	obs := stripper.Observation()
+	obs := observationFor(res, provider)
 
 	view := render.Doctor{
 		Verb:     "doctor",
@@ -104,19 +176,23 @@ func doctor(args []string, out io.Writer) error {
 		Vanished:   res.Vanished,
 		Unreadable: res.Unreadable,
 
-		// Record counts come from the archive's own tally rather than strip's:
-		// a malformed line never reaches Strip, and a line the reader could not
-		// parse is exactly what doctor exists to surface.
+		// Line, malformed and untyped counts come from the archive's own tally
+		// rather than the provider's: a malformed line never reaches a decoder,
+		// and a line the reader could not parse is exactly what doctor exists
+		// to surface. Unknown-type counts do not: the archive's tally judges a
+		// type against Claude Code's own catalog, which every Codex envelope
+		// type would fail, so those come from the provider's own observation.
 		Lines:        res.Tally.Lines,
 		Malformed:    res.Tally.Malformed,
 		Untyped:      res.Tally.Untyped,
-		UnknownTotal: res.Tally.UnknownTotal(),
+		UnknownTotal: obs.UnknownTotal,
+		UnknownTypes: obs.UnknownTypes,
 		Collapsed:    res.Collapsed,
 
-		HumanShaped:        obs.HumanShapedMain,
+		HumanShaped:        obs.HumanShaped,
 		Typed:              obs.Typed,
 		CommandArgs:        obs.CommandArgs,
-		TypedLabelsMissing: obs.TypedLabelsMissing(),
+		TypedLabelsMissing: obs.TypedLabelsMissing,
 
 		Problems: rep.Problems,
 	}
@@ -131,15 +207,13 @@ func doctor(args []string, out io.Writer) error {
 			Checksum: t.Checksum,
 		})
 	}
-	for _, u := range res.Tally.UnknownCounts() {
-		view.UnknownTypes = append(view.UnknownTypes, render.TypeCount{Type: u.Type, Count: u.Count})
-	}
 	if checked && !intact(found) {
 		for _, p := range found.Problems {
 			view.Problems = append([]string{"as found, before this run refreshed the store: " + p}, view.Problems...)
 		}
 	}
 	view.Warnings = warningsOf(view)
+	view.Warnings = append(view.Warnings, obs.ExtraWarnings...)
 	if upgraded {
 		view.Warnings = append(view.Warnings,
 			"this store predates the integrity checksums, so it could not be checked as found; this run wrote them")
@@ -150,14 +224,100 @@ func doctor(args []string, out io.Writer) error {
 				"anything the raw files no longer cover was already lost before it ran")
 	}
 
-	if err := emit(out, g, view.Text(), view); err != nil {
-		return err
+	return view, nil
+}
+
+// providerObservation is what a provider saw, generalised to the fields
+// render.Doctor already carries for any agent.
+type providerObservation struct {
+	HumanShaped        int
+	Typed              int
+	CommandArgs        int
+	TypedLabelsMissing bool
+	UnknownTotal       int
+	UnknownTypes       []render.TypeCount
+	ExtraWarnings      []string
+}
+
+func observationFor(res archive.Result, provider archive.Provider) providerObservation {
+	switch p := provider.(type) {
+	case *strip.ClaudeCodeProvider:
+		obs := p.Observation()
+		return providerObservation{
+			HumanShaped:        obs.HumanShapedMain,
+			Typed:              obs.Typed,
+			CommandArgs:        obs.CommandArgs,
+			TypedLabelsMissing: obs.TypedLabelsMissing(),
+			UnknownTotal:       res.Tally.UnknownTotal(),
+			UnknownTypes:       typeCounts(res.Tally.UnknownCounts()),
+		}
+	case *strip.CodexProvider:
+		obs := p.Observation()
+		total, types := codexUnknownTypes(obs)
+		return providerObservation{
+			UnknownTotal:  total,
+			UnknownTypes:  types,
+			ExtraWarnings: codexWarnings(obs),
+		}
+	default:
+		return providerObservation{
+			UnknownTotal: res.Tally.UnknownTotal(),
+			UnknownTypes: typeCounts(res.Tally.UnknownCounts()),
+		}
 	}
-	if !view.OK {
-		return fperr.New(fperr.BadArchive, "archive integrity check failed: %d %s",
-			len(view.Problems), plural(len(view.Problems), "problem", "problems"))
+}
+
+// codexUnknownTypes folds a Codex observation's two unknown vocabularies —
+// envelope types and response_item payload types — into the one list
+// render.Doctor reports. A payload type is prefixed so a reader is never
+// left guessing which vocabulary an unfamiliar name belongs to.
+func codexUnknownTypes(obs strip.CodexObservation) (int, []render.TypeCount) {
+	var total int
+	out := make([]render.TypeCount, 0, len(obs.Tally.Unknown)+len(obs.UnknownPayloads))
+	for _, c := range obs.Tally.UnknownCounts() {
+		out = append(out, render.TypeCount{Type: c.Type, Count: c.Count})
+		total += c.Count
 	}
-	return nil
+	payloadTypes := make([]string, 0, len(obs.UnknownPayloads))
+	for typ := range obs.UnknownPayloads {
+		payloadTypes = append(payloadTypes, typ)
+	}
+	sort.Strings(payloadTypes)
+	for _, typ := range payloadTypes {
+		n := obs.UnknownPayloads[typ]
+		out = append(out, render.TypeCount{Type: "payload:" + typ, Count: n})
+		total += n
+	}
+	return total, out
+}
+
+// codexWarnings states what a Codex rollout store left unread rather than
+// silently dropping it: a compressed rollout, a compacted record's replaced
+// history, and an event_msg record are each excluded on purpose, and doctor
+// exists to say so rather than let the exclusion go unreported.
+func codexWarnings(obs strip.CodexObservation) []string {
+	var out []string
+	if obs.Compressed > 0 {
+		out = append(out, fmt.Sprintf(
+			"%d rollout(s) have been compressed to .jsonl.zst and were not read", obs.Compressed))
+	}
+	if obs.Replaced > 0 {
+		out = append(out, fmt.Sprintf(
+			"%d replacement_history record(s) were skipped because they were already archived from their own earlier records", obs.Replaced))
+	}
+	if obs.Telemetry > 0 {
+		out = append(out, fmt.Sprintf(
+			"%d event_msg record(s) were dropped because they duplicate a response_item already archived", obs.Telemetry))
+	}
+	return out
+}
+
+func typeCounts(in []jsonl.TypeCount) []render.TypeCount {
+	out := make([]render.TypeCount, len(in))
+	for i, c := range in {
+		out[i] = render.TypeCount{Type: c.Type, Count: c.Count}
+	}
+	return out
 }
 
 func exists(path string) bool {

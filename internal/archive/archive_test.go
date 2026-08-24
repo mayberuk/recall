@@ -3,8 +3,11 @@ package archive
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/mayberuk/recall/internal/schema"
 )
 
 // clearHomeEnv isolates Dir and DefaultRoot from whatever environment the test
@@ -174,6 +177,125 @@ func TestOpenPropagatesARootResolutionFailure(t *testing.T) {
 
 	if _, err := Open(Options{Dir: t.TempDir(), Strip: stubStrip, Resolve: stubResolve}); err == nil {
 		t.Error("Open succeeded deriving Root with no CLAUDE_PROJECTS_DIR or HOME")
+	}
+}
+
+// A caller that names a session store has said which corpus it wants, and the
+// selection is about which corpus to pick. Every existing archive was written
+// by such a caller, so this path has to land on claude-code's agent and on
+// claude-code's directory whatever the run was asked to read.
+func TestOpenWithARootIgnoresTheSelection(t *testing.T) {
+	resetSelection(t)
+	withProviders(t,
+		stubbedProvider{agent: schema.AgentClaudeCode, root: t.TempDir()},
+		stubbedProvider{agent: schema.AgentCodex, root: t.TempDir()},
+	)
+	t.Setenv("RECALL_AGENT", "codex")
+
+	base, root := t.TempDir(), t.TempDir()
+	s, err := Open(Options{Dir: base, Root: root, Strip: stubStrip, Resolve: stubResolve})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if s.Agent() != schema.AgentClaudeCode {
+		t.Errorf("Agent() = %q, want claude-code", s.Agent())
+	}
+	if s.Dir() != base {
+		t.Errorf("Dir() = %q, want the archive root %q and no agent subdirectory", s.Dir(), base)
+	}
+	if s.Root() != root {
+		t.Errorf("Root() = %q, want the root the caller named %q", s.Root(), root)
+	}
+}
+
+// The same rule on the other half of the legacy seam: a strip function is
+// claude-code's, so passing one opts out of the selection even with no root.
+func TestOpenWithAStripFunctionIgnoresTheSelection(t *testing.T) {
+	resetSelection(t)
+	withProviders(t, stubbedProvider{agent: schema.AgentCodex, root: t.TempDir()})
+	clearHomeEnv(t)
+	t.Setenv("RECALL_AGENT", "codex")
+	projects := t.TempDir()
+	t.Setenv("CLAUDE_PROJECTS_DIR", projects)
+
+	base := t.TempDir()
+	s, err := Open(Options{Dir: base, Strip: stubStrip, Resolve: stubResolve})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if s.Agent() != schema.AgentClaudeCode {
+		t.Errorf("Agent() = %q, want claude-code", s.Agent())
+	}
+	if s.Dir() != base {
+		t.Errorf("Dir() = %q, want the archive root %q", s.Dir(), base)
+	}
+	if s.Root() != projects {
+		t.Errorf("Root() = %q, want claude-code's own store %q", s.Root(), projects)
+	}
+}
+
+func TestOpenWithAnAgentTakesItsProviderRootAndSubdirectory(t *testing.T) {
+	resetSelection(t)
+	sessions := t.TempDir()
+	withProviders(t, stubbedProvider{agent: schema.AgentCodex, root: sessions})
+
+	base := t.TempDir()
+	s, err := Open(Options{Dir: base, Agent: schema.AgentCodex, Resolve: stubResolve})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if want := filepath.Join(base, "agents", "codex"); s.Dir() != want {
+		t.Errorf("Dir() = %q, want %q", s.Dir(), want)
+	}
+	if s.Root() != sessions {
+		t.Errorf("Root() = %q, want the provider's own root %q", s.Root(), sessions)
+	}
+}
+
+func TestOpenRefusesAnAgentWithNoProvider(t *testing.T) {
+	resetSelection(t)
+	withProviders(t)
+
+	_, err := Open(Options{Dir: t.TempDir(), Agent: schema.AgentGemini, Resolve: stubResolve})
+	if err == nil {
+		t.Fatal("Open accepted an agent no provider is registered for")
+	}
+}
+
+func TestOpenFollowsTheSelectionWithNeitherRootNorStrip(t *testing.T) {
+	resetSelection(t)
+	sessions := t.TempDir()
+	withProviders(t, stubbedProvider{agent: schema.AgentCodex, root: sessions})
+	t.Setenv("RECALL_AGENT", "codex")
+
+	s, err := Open(Options{Dir: t.TempDir(), Resolve: stubResolve})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if s.Agent() != schema.AgentCodex {
+		t.Errorf("Agent() = %q, want the selected codex", s.Agent())
+	}
+	if s.Root() != sessions {
+		t.Errorf("Root() = %q, want %q", s.Root(), sessions)
+	}
+}
+
+// Several agents are not a store. Opening the first of them would answer from
+// part of what was asked for while reporting the whole.
+func TestOpenRefusesASelectionOfSeveralAgents(t *testing.T) {
+	resetSelection(t)
+	withProviders(t,
+		stubbedProvider{agent: schema.AgentClaudeCode, root: t.TempDir()},
+		stubbedProvider{agent: schema.AgentCodex, root: t.TempDir()},
+	)
+	t.Setenv("RECALL_AGENT", "all")
+
+	_, err := Open(Options{Dir: t.TempDir(), Resolve: stubResolve})
+	if err == nil {
+		t.Fatal("Open picked one store out of a selection naming two agents")
+	}
+	if !strings.Contains(err.Error(), "OpenGroup") {
+		t.Errorf("Open error = %q, want it to name OpenGroup", err)
 	}
 }
 

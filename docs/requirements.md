@@ -65,6 +65,19 @@ The corpus is 1,063 sessions / ~1.4 GB across 34 project directories and grows d
   are not the gap here. Raw session transcripts are the only complete record of what was said,
   and nothing indexes them today. This is a recall layer over that record, not a new capture
   discipline.
+- **Every agent except Claude Code and Codex, for this wave.** The objective above now reads
+  over any registered agent's session store, not Claude Code's alone — `docs/design.md` records
+  the provider seam that makes an agent pluggable. Copilot CLI, Aider and OpenCode set no
+  identity variable a child process can rely on at all
+  (`C-20260817-copilot-cli-no-child-env-var`, `C-20260817-aider-run-cmd-passes-no-env`,
+  `C-20260817-opencode-shell-tool-sets-nothing`), so detecting which of them is running is an
+  open problem before a reader for any of them is worth writing. Copilot additionally stores its
+  transcript as `events.jsonl` under `~/.copilot/session-state/`, and that schema is not yet
+  established (`C-20260817-copilot-session-state-jsonl`) — nothing concrete to decode against.
+  Gemini CLI and Cursor are the different case: both are detectable (`GEMINI_CLI=1`,
+  `CURSOR_AGENT=1`) and `recall` already recognizes both, but neither has a registered provider
+  this wave — a run that detects one falls back to reading Claude Code's corpus and reports why,
+  rather than answering from the wrong corpus silently.
 
 ## Decided
 Three questions were open when this brief was written and were settled during design (see

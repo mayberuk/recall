@@ -1,9 +1,10 @@
 # recall
 
-`recall` searches every past Claude Code session transcript on your machine, not just the ones
-under the directory you happen to be sitting in. Six commands answer four questions — which
-session, what was concluded, when, and have I hit this before — without loading a transcript into
-the asking agent's context.
+`recall` searches every past session transcript on your machine from a supported coding agent —
+not just the ones under the directory you happen to be sitting in. Two agents are supported today,
+Claude Code and Codex CLI. Six commands answer four questions — which session, what was
+concluded, when, and have I hit this before — without loading a transcript into the asking
+agent's context.
 
 ## The problem it solves
 
@@ -31,6 +32,29 @@ go build -o ~/.local/bin/recall ./cmd/recall
 and no enablement step — a directory that was never initialized is exactly the one you will
 search. The first run builds an archive from the whole corpus (a little over a second); later
 runs read only the tiers a query touches and update incrementally.
+
+## Which agent, and how it's chosen
+
+Two agents are registered: **Claude Code** (`~/.claude/projects`) and **Codex CLI**
+(`~/.codex/sessions`, or `$CODEX_HOME/sessions`). A Codex archive lives separately, under
+`agents/codex/` inside the archive directory, so an existing Claude Code archive never needs to
+rebuild to pick up the second agent.
+
+By default `recall` detects which agent is asking, cheapest and most certain signal first:
+`CODEX_THREAD_ID` or `CODEX_SESSION_ID`, then `GEMINI_CLI`, then `CURSOR_AGENT`, else Claude
+Code. Gemini CLI and Cursor are detected but have no reader yet — a run that detects either falls
+back to reading Claude Code's archive and says so in the coverage footer, rather than guessing.
+
+`--provider` overrides detection: `auto` (the default) lets the environment decide, an agent name
+(`claude-code`, `codex`) pins one, and `all` reads every registered agent whose session store
+exists. `RECALL_AGENT` is the same choice as an environment variable, for a caller that can't
+pass a flag — the flag wins if both are set. `--provider` is a different flag from `--agent`:
+`--agent` narrows results to a subagent nickname *within* whichever corpus was already chosen, it
+does not choose the corpus.
+
+`find`, `turns`, `when` and `show` still read Claude Code's corpus only, and refuse an explicit
+`--provider`/`RECALL_AGENT` naming another agent rather than silently answering from the wrong
+one. `recall doctor` reads whatever `--provider` resolves to today.
 
 ## The four questions, and which command answers each
 
@@ -62,8 +86,9 @@ $ recall find zq16ddfwutxgjte
 35c32001-6640-43fd-9b2f-d83ff13572c1  2026-01-02  git.invalid/corpusgen/repo00  main  1 hit of 40 turns
   assistant  …check walk value before return depends because inside. the «zq16ddfwutxgjte» path is the one we settled on
 ── 6 sessions · 6 searched · conversation only — tool output NOT searched (--results)
-── live to 2026-08-15 · archived before that · refreshed just now
-── 464 B · ~116 tokens
+── live to 2026-08-19 · archived before that · refreshed just now
+── scanned 247.8 KB · 239 turns · 31 ms
+── 510 B · ~128 tokens
 ```
 
 The returned session lives under `~/demo-corpus/.claude/checkouts/repo00-2`; the command ran
@@ -77,72 +102,90 @@ a real keyword.
 
 ```
 $ recall find gjson
-1 session · 74 hits for "gjson"
-11b7e527-575e-48e1-8eb7-f673614d3838  2026-08-14  ~/dev/recall  main  74 hits in 44 turns of 437 turns  49 from subagents
-  agent      «gjson» is already in the module cache, so the build works offline.…
-  agent      Now P2 — the `jsonl` package, the only «gjson» user.
-  agent      …two suspected divergences between the hand-rolled header and the «gjson» accessors, with a temporary test I will delete.
+1 session · 6 hits for "gjson"
+048519dd-a321-4d81-b69e-d79688b1a4a5  2026-08-17  github.com/mayberuk/recall  initiative/agents-and-mcp  6 hits in 3 turns of 378 turns  4 from subagents
+  agent      …(BLOCKER — hardcodes allowed=\"github.com/tidwall/«gjson»\" and fails CI on any second direct dependency; must become a… ×2
+  agent      …"evidence": "scripts/deps-gate.sh: `allowed=\"github.com/tidwall/«gjson»\"` … `echo \"deps-gate: direct dependency other than ${allowed}… ×2
+  system     …"evidence": "scripts/deps-gate.sh: `allowed=\"github.com/tidwall/«gjson»\"` … `echo \"deps-gate: direct dependency other than ${allowed}… ×2
 ── 2 sessions · 1 searched · conversation only — tool output NOT searched (--results)
-── live to 2026-06-10 · archived before that · refreshed just now
-── showing 3 of 44 matched turns (--hits)
-── 123 turns of your own session were skipped (--include-self)
-── 788 B · ~197 tokens
+── live to 2026-07-18 · archived before that · refreshed just now
+── 745 turns of your own session were skipped (--include-self)
+── scanned 908.8 KB · 378 turns · 828 ms
+── 969 B · ~243 tokens
 ```
 
 **`recall turns <query>`** — the passages themselves, ranked across every session:
 
 ```
 $ recall turns "no index" --limit 2
-2 of 32 matched turns for "no index"
+2 of 18 matched turns for "no index"
 
-11b7e527-575e-48e1-8eb7-f673614d3838:8f0a101f-222e-46e5-97ca-9f8798c141e8  2026-08-14  ~/dev/recall  main  assistant  ×16
-    **Archive is done and committed**, verified by me: build 0, tests 0 with the real corpus, `-race` 0, `gofmt` clean, and it imports only wave-0 packages — no dependency on Strip or Repo, exactly as the amendment required.
+048519dd-a321-4d81-b69e-d79688b1a4a5:675726c4-7f84-4e1a-a353-e7e1c5ebac6e  2026-08-17  github.com/mayberuk/recall  perf-wave-1  assistant  ×3
+    Now that's a clear and somewhat surprising picture. Within the scan package:
 
-    The performance gate is the story here. **The cold pass first measured 4.42 s against a 4 s gate — a breach, which the contract calls a FAIL, not a warning.** The remedy was parallelizing the corpus walk, not adding an index: 0.96 s now. The ratified no-index decision holds.
-    …
-    … 1745 bytes in this turn; `recall show 11b7e527 --turn 8f0a101f-222e-46e5-97ca-9f8798c141e8` for all of it
+    | path | cum | note |
+    |---|---:|---|
+    | `gather` → `tokenize` (miss-path term survey) | **36.4%** | `wordByte` alone is 15.0% |
+    | `scanRange` (the hit path) | 14.6% | of which `fold` is 11.9% — **81% of it** |
+    | `indexNeedle` (substring search) | 1.4% | |
+
+    Let me check the archive side before deciding what to build.
+
+048519dd-a321-4d81-b69e-d79688b1a4a5:c44ec573-32ad-4d46-8c98-3379f29cfa66  2026-08-17  github.com/mayberuk/recall  perf-wave-1  agent/a3000c6517100938f  ×11
+    …and docs/sandbox.md, docs/config.md. Also check whether there is any general "I am an agent" flag.
+    2. Where session transcripts ("rollouts") live on disk: the CODEX_HOME default (~/.codex), the sessions/ layout (year/month/day nesting?), the rollout filename pattern, per-OS differences (Linux/macOS/Windows), and whether there is a session_index or history.jsonl and what each contains. Also how sessions map to a project/repo/cwd.
+    3. The rollout file format: JSONL? What are the top-level record types (e.g. session_meta, response_item, event_msg, turn_context, compacted)? What are the key fields (timestamp format, type/payload envelope, id, cwd, originator, cli_version, git info,…
+    … 3325 bytes in this turn; `recall show 048519dd --turn c44ec573-32ad-4d46-8c98-3379f29cfa66` for all of it
 ── 2 sessions · 1 searched · conversation only — tool output NOT searched (--results)
-── live to 2026-06-10 · archived before that · refreshed just now
-── showing 2 of 32 matched turns (--limit)
-── 123 turns of your own session were skipped (--include-self)
-── 2.1 KB · ~536 tokens
+── live to 2026-07-18 · archived before that · refreshed just now
+── showing 2 of 18 matched turns (--limit)
+── 745 turns of your own session were skipped (--include-self)
+── scanned 908.8 KB · 378 turns · 499 ms
+── 1.9 KB · ~488 tokens
 ```
 
 **`recall show <session>`** — recover a conclusion with the turn it came from:
 
 ```
-$ recall show 11b7e527 --turn 8f0a101f-222e-46e5-97ca-9f8798c141e8 --around 0
-11b7e527-575e-48e1-8eb7-f673614d3838  ~/dev/recall  main  437 turns (conversation)
+$ recall show 048519dd --turn 675726c4-7f84-4e1a-a353-e7e1c5ebac6e --around 0
+048519dd-a321-4d81-b69e-d79688b1a4a5  github.com/mayberuk/recall  main  378 turns (conversation)
 
-turns 85-85 of 437
-> 2026-08-14  assistant
-    **Archive is done and committed**, verified by me: build 0, tests 0 with the real corpus, `-race` 0, `gofmt` clean, and it imports only wave-0 packages — no dependency on Strip or Repo, exactly as the amendment required.
+turns 17-17 of 378
+> 2026-08-17  assistant
+    Now that's a clear and somewhat surprising picture. Within the scan package:
 
-    The performance gate is the story here. **The cold pass first measured 4.42 s against a 4 s gate — a breach, which the contract calls a FAIL, not a warning.** The remedy was…
-    … 1745 bytes in this turn; --chars 0 for all of it
+    | path | cum | note |
+    |---|---:|---|
+    | `gather` → `tokenize` (miss-path term survey) | **36.4%** | `wordByte` alone is 15.0% |
+    | `scanRange` (the hit path) | 14.6% | of which `fold` is 11.9% — **81% of it** |
+    | `indexNeedle` (substring search) | 1.4% | |
+
+    Let me check the archive side before deciding what to build.
 ── 1 session · 1 searched · conversation only — tool output NOT searched (--results)
-── live to 2026-06-10 · archived before that · refreshed just now
-── showing 1 of 437 turns (--around)
-── 864 B · ~216 tokens
+── live to 2026-07-18 · archived before that · refreshed just now
+── showing 1 of 378 turns (--around)
+── scanned 908.8 KB · 378 turns · 472 ms
+── 857 B · ~215 tokens
 ```
 
 **`recall when <query>`** — place a topic in time:
 
 ```
-$ recall when chezmoi
-"chezmoi"  first 2026-08-14 · last 2026-08-14 · 55 hits in 1 session
-  2026-08    55 hits · 1 session
+$ recall when provider
+"provider"  first 2026-08-17 · last 2026-08-17 · 362 hits in 1 session
+  2026-08   362 hits · 1 session
 
 oldest first
-11b7e527-575e-48e1-8eb7-f673614d3838  2026-08-14  ~/dev/recall  main  55 hits in 18 turns of 437 turns  32 from subagents
-  agent      Let me read the primary target and check «chezmoi»'s ignore rules.
-  agent      Plan is written. Now Phase 3 — the «chezmoi» source first.
-  agent      «Chezmoi» target carries the line. Now the two agent definitions.
+048519dd-a321-4d81-b69e-d79688b1a4a5  2026-08-17  github.com/mayberuk/recall  initiative/agents-and-mcp  362 hits in 37 turns of 378 turns  188 from subagents
+  assistant  …concentrated in `internal/jsonl` + `internal/strip`, so the «provider» seam for part 3 is narrower than it might sound. I'll pick up the…
+  agent      Now finding 9 — the `«provider»` tool input in phase 2.
+  assistant  «Provider»s amendments applied and lint-clean. One more (mcp-server)…
 ── 2 sessions · 1 searched · conversation only — tool output NOT searched (--results)
-── live to 2026-06-10 · archived before that · refreshed just now
-── showing 3 of 18 matched turns (--hits)
-── 123 turns of your own session were skipped (--include-self)
-── 818 B · ~205 tokens
+── live to 2026-07-18 · archived before that · refreshed just now
+── showing 3 of 37 matched turns (--hits)
+── 745 turns of your own session were skipped (--include-self)
+── scanned 908.8 KB · 378 turns · 490 ms
+── 952 B · ~238 tokens
 ```
 
 **`recall doctor`** — archive integrity, coverage boundaries, format drift:
@@ -150,18 +193,20 @@ oldest first
 ```
 $ recall doctor
 archive    ~/.local/share/recall
-integrity  ok · 191835 turns · 143 sessions · 287.2 MB
-  conversation  ok     ·   47.8 MB ·   37493 turns
-  invocation    ok     ·   39.3 MB ·   78062 turns
-  result        ok     ·  200.0 MB ·   76280 turns
+integrity  ok · 79242 turns · 56 sessions · 118.5 MB
+  conversation  ok     ·   21.9 MB ·    8115 turns
+  invocation    ok     ·   14.6 MB ·   35803 turns
+  result        ok     ·   81.9 MB ·   35324 turns
   meta.json     ok
   cursor        ok
-coverage   live to 2026-06-10 · content 2026-06-10 to 2026-08-17
-skew       55 days on «a-project-directory»/ea9730d2-7357-42e5-be9f-642211a7d47f.jsonl
-corpus     ~/.claude/projects · 1212 files · 0 vanished · 0 unreadable
-records    333721 lines · 0 malformed · 0 untyped · 0 of an unknown type
-dedup      10141 records collapsed on (session, uuid) at ingest
-authorship 4612 human-shaped · 1225 typed · 179 command-args
+coverage   live to 2026-07-19 · content 2026-07-19 to 2026-08-19
+skew       14 days on «a-project-directory»/defc1576-a807-438b-8287-6dd9dadb3012.jsonl
+corpus     ~/.claude/projects · 679 files · 0 vanished · 0 unreadable
+records    114031 lines · 0 malformed · 0 untyped · 9 of an unknown type
+  unknown type atis-latch  9
+dedup      175 records collapsed on (session, uuid) at ingest
+authorship 1088 human-shaped · 344 typed · 73 command-args
+warning    9 records carry a type this build has never seen; they are archived and searchable, but nothing interprets their fields
 ```
 
 **`recall guide`** — the on-ramp; run this before anything else:

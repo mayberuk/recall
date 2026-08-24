@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -49,6 +50,83 @@ const archivePlaceholder = "«ARCHIVE»"
 // itself goes untested at this level; TestTheStatsSectionRendersWhenItIsNotSuppressed
 // is what proves it still renders, since this comparison alone cannot.
 
+// sizePlaceholder and bytesOfPattern are the third exception, and the only one
+// scoped to a single verb. The archive's tier-file format moved from
+// recall-turns-2 to recall-turns-3 after defaultBaseline was tagged, and v3
+// writes a block table the old format did not, so head's archive files are
+// larger than the baseline's by a fixed, format-driven amount — never zero,
+// never the code under test. `doctor` is the only verb that prints that
+// absolute size (render.bytesOf, rounded to one decimal place of KB or MB),
+// and roughly one run in twenty-five lands the true byte count on the wrong
+// side of a rounding boundary, so the same two archives compare unequal in
+// text even though nothing either binary did is at fault. The cost is that
+// the size figure itself goes untested at this level; the turn counts beside
+// it — the number that actually says whether the archive is intact — are
+// unaffected and stay byte-compared. TestDoctorStillPrintsASizeFigure is what
+// proves doctor still prints a plausible size at all, since normalizing it
+// away here means this comparison alone cannot.
+const sizePlaceholder = "«SIZE»"
+
+// expectedDeltas is the register for a difference from the baseline that is
+// deliberate rather than a regression, one entry per case it applies to and
+// the exact before/after text of the change.
+//
+// A normalization like sizePlaceholder blinds the case to every difference
+// over the span it covers, forever — the right tool for a rounding artifact
+// that recurs on about one run in twenty-five, never for a one-time,
+// intentional edit. Recording the literal before and after text here instead
+// keeps the case failing on anything else in that line: a second, unrelated
+// change to the same text a normalization would have waved through still
+// shows up as a real diff, because applyExpectedDeltas only ever replaces the
+// exact baseline text named below, never a pattern.
+var expectedDeltas = []struct {
+	name     string // the case this delta applies to, matched against battery.name
+	from, to string // the exact baseline line, and the exact line replacing it in this tree
+	reason   string
+}{
+	{
+		name: "guide",
+		from: "recall — what was said in any past Claude Code session on this machine.",
+		to:   "recall — what was said in any past session of the selected agent, on this machine.",
+		reason: "recall now reads whichever agent's sessions RECALL_AGENT selects, not only Claude " +
+			"Code's, so the banner's claim about which agent it reads had to change to match.",
+	},
+}
+
+// applyExpectedDeltas rewrites the deltas registered for name from base's
+// stdout to head's expected wording, so the byte comparison downstream still
+// catches every difference except the ones named here.
+//
+// Each delta's `from` text must be present in base — if it is not, either the
+// baseline moved out from under the register or the register itself no
+// longer describes this tree, and either is worth failing loudly on rather
+// than silently leaving base uncorrected and reporting a spurious diff.
+func applyExpectedDeltas(t *testing.T, name, base string) string {
+	t.Helper()
+	for _, d := range expectedDeltas {
+		if d.name != name {
+			continue
+		}
+		if !strings.Contains(base, d.from) {
+			t.Fatalf("expected delta for %q not found in the baseline output (%s)\nwant substring:\n%s",
+				name, d.reason, d.from)
+		}
+		base = strings.Replace(base, d.from, d.to, 1)
+	}
+	return base
+}
+
+// bytesOfPattern matches exactly the text render.bytesOf produces: an integer
+// byte count, or a one-decimal-place KB or MB figure. It is applied only to
+// `doctor` output — never to a search verb's own size footer, which is a real
+// invariant produced by a different function (render.byteSize) and must keep
+// failing if it changes.
+var bytesOfPattern = regexp.MustCompile(`\d+\.\d (?:KB|MB)|\d+ B\b`)
+
+func normalizeDoctorSizes(s string) string {
+	return bytesOfPattern.ReplaceAllString(s, sizePlaceholder)
+}
+
 // headTurnsPerRange makes the binary under test cut the corpus into concurrent
 // ranges that this corpus is otherwise far too small to reach: 5 MB strips to
 // about 3,000 turns against a default floor of 2,048 per range, and the
@@ -69,6 +147,7 @@ type pair struct {
 	baseHome   string // archive directory for base
 	headHome   string // archive directory for head
 	checkout   string // a checkout inside the corpus, used as the working directory
+	work       string // the temp dir holding everything above, removed by TestMain on success
 }
 
 var (
@@ -77,6 +156,22 @@ var (
 	setupSkip string
 	setupErr  error
 )
+
+// TestMain removes the shared work dir — both binaries, both archives, the
+// corpus — after a passing run, but only after a passing run. A failure here
+// is a byte-for-byte output mismatch that setup's own construction cannot
+// explain, so the only place left to look is what actually got built and
+// written, and deleting that on the way out would take the evidence with it.
+// It stayed unremoved unconditionally until this test suite's normalization
+// exception was added, which is why the repo had 106 of these trees sitting
+// under /tmp before then.
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if code == 0 && shared != nil {
+		_ = os.RemoveAll(shared.work)
+	}
+	os.Exit(code)
+}
 
 // battery is one invocation run against both binaries.
 type battery struct {
@@ -215,6 +310,11 @@ func TestOutputIsByteIdenticalToTheBaseline(t *testing.T) {
 			}
 			base := p.run(t, p.base, p.baseHome, dir, c.args)
 			head := p.run(t, p.head, p.headHome, dir, c.args)
+			if c.args[0] == "doctor" {
+				base.stdout = normalizeDoctorSizes(base.stdout)
+				head.stdout = normalizeDoctorSizes(head.stdout)
+			}
+			base.stdout = applyExpectedDeltas(t, c.name, base.stdout)
 			if base.equal(head) {
 				return
 			}
@@ -303,6 +403,48 @@ func TestTheStatsSectionRendersWhenItIsNotSuppressed(t *testing.T) {
 		t.Fatalf("size footer line %q is identical between the suppressed and unsuppressed runs; "+
 			"want it to differ, since the stats line lengthens the body it measures", got)
 	}
+}
+
+// TestDoctorStillPrintsASizeFigure guards the exception normalizeDoctorSizes
+// is. Normalizing every size in doctor's output to sizePlaceholder before
+// comparing means TestOutputIsByteIdenticalToTheBaseline can no longer tell a
+// doctor that still prints a real size from one that regressed to printing
+// nothing, or garbage, where a size belongs — both normalize to the same
+// placeholder and the comparison passes either way. This runs doctor once,
+// unnormalized, and checks every line doctor's own format guarantees carries a
+// size — the integrity line and each tier line — individually, rather than
+// counting matches in the output as a whole: this corpus's tier sizes split
+// across the KB and MB branches of render.bytesOf, so a break in one branch
+// alone would still leave enough matches elsewhere in the output for a bare
+// count to pass.
+func TestDoctorStillPrintsASizeFigure(t *testing.T) {
+	p := setup(t)
+	dir := p.corpus.Plants[0].Cwd
+	out := p.run(t, p.head, p.headHome, dir, []string{"doctor"})
+	lines := sizeBearingLines(out.stdout)
+	if len(lines) < 2 {
+		t.Fatalf("found %d line(s) doctor's format puts a size on (the integrity line and each tier line), "+
+			"want at least 2:\n%s", len(lines), out.stdout)
+	}
+	for _, l := range lines {
+		if !bytesOfPattern.MatchString(l) {
+			t.Fatalf("line %q does not carry a size shaped like render.bytesOf's output", l)
+		}
+	}
+}
+
+// sizeBearingLines returns the lines doctor.Text's own format guarantees
+// carries a render.bytesOf figure: the integrity line, and each tier line —
+// the only lines that end in " turns" other than the integrity line, which is
+// matched on its own leading label instead.
+func sizeBearingLines(stdout string) []string {
+	var lines []string
+	for _, l := range strings.Split(stdout, "\n") {
+		if strings.HasPrefix(l, "integrity ") || strings.HasSuffix(l, " turns") {
+			lines = append(lines, l)
+		}
+	}
+	return lines
 }
 
 // statsLinePrefix opens the stats footer's own line (internal/render's
@@ -531,6 +673,7 @@ func build() (*pair, string, error) {
 		home:     filepath.Join(work, "home"),
 		baseHome: filepath.Join(work, "archive-baseline"),
 		headHome: filepath.Join(work, "archive-head"),
+		work:     work,
 	}
 	if out, err := run(tree, "go", "build", "-o", p.base, "./cmd/recall"); err != nil {
 		return nil, "", fmt.Errorf("build %s: %v\n%s", ref, err, out)

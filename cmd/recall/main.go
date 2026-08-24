@@ -1,6 +1,7 @@
-// Command recall answers what was said in any past Claude Code session on this
-// machine — which session it was, what was concluded, when it was first said —
-// without pulling transcript text into the asking agent's context.
+// Command recall answers what was said in any past session of the selected
+// agent on this machine — which session it was, what was concluded, when it
+// was first said — without pulling transcript text into the asking agent's
+// context.
 //
 // One query reaches every project directory, because the session store keys by
 // checkout path and one logical repo spans many directories.
@@ -15,8 +16,21 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/mayberuk/recall/internal/archive"
 	"github.com/mayberuk/recall/internal/fperr"
+	"github.com/mayberuk/recall/internal/strip"
 )
+
+// Providers register here rather than in internal/strip's own init: archive
+// owns the corpus walk and must not import the package that knows the record
+// formats, and strip importing archive back would put a cycle in archive's
+// own test package. cmd/recall already imports both, so this is the one
+// place a provider can be registered before anything asks archive.Select or
+// archive.Registered for an answer.
+func init() {
+	archive.Register(strip.ClaudeCode())
+	archive.Register(strip.Codex())
+}
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 
@@ -126,7 +140,7 @@ func printVersion(w io.Writer) {
 }
 
 func printUsage(w io.Writer) {
-	fmt.Fprintln(w, "recall — search past Claude Code sessions across this whole machine")
+	fmt.Fprintln(w, "recall — search past sessions of the selected agent, across this whole machine")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Usage: recall <verb> [flags]")
 	fmt.Fprintln(w, "")
@@ -155,6 +169,8 @@ What is searched
   The current repo only, across all its checkouts. --all reaches the machine.
   Your own session and recall's own output are excluded; --include-self and
   --include-recall put them back.
+  --provider chooses whose transcripts are searched; --agent still filters by
+  subagent name within them.
 
 Session ids
   Any unique prefix works: recall show 5fd86b00 is enough.

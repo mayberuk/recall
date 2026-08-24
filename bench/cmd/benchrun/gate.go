@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mayberuk/recall/bench"
+	"github.com/mayberuk/recall/bench/groupbench"
 	"github.com/mayberuk/recall/bench/turns"
 	"github.com/mayberuk/recall/internal/archive"
 	"github.com/mayberuk/recall/internal/repo"
@@ -22,7 +24,7 @@ func gate(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	_, cleanup, err := corpora([]bench.Size{bench.Size(*size)})
+	gens, cleanup, err := corpora([]bench.Size{bench.Size(*size)})
 	if err != nil {
 		return err
 	}
@@ -32,7 +34,32 @@ func gate(args []string) error {
 	if err != nil {
 		return err
 	}
-	return reportGates(results)
+	allocs, err := groupbench.MeasureGroupAllocs(gens[bench.Size(*size)].Root, mustTempDir())
+	if err != nil {
+		return err
+	}
+
+	return errors.Join(reportGates(results), reportGroupAllocs(allocs))
+}
+
+// reportGroupAllocs prints the group-vs-direct allocation check in the same
+// shape reportGates prints a wall-clock gate, so both read the same way: a
+// verdict, a name, the measured figure, and what it is judged against. It is
+// not a time.Duration gate because a copy or merge small enough to leave a
+// wall-clock gate untouched would still show up here.
+func reportGroupAllocs(a groupbench.GroupAllocs) error {
+	verdict := "ok"
+	if a.Breached() {
+		verdict = "BREACHED"
+	}
+	fmt.Fprintf(os.Stderr, "%-8s %-34s %8.1f allocs  (gate %.1f allocs)  %s\n",
+		verdict, "group read vs direct read", a.Grouped, a.Direct,
+		"Group.Turns of one store must allocate no more than Store.Turns")
+	if a.Breached() {
+		return fmt.Errorf("group read of one store allocates %.1f time(s) per call against a direct read's %.1f",
+			a.Grouped, a.Direct)
+	}
+	return nil
 }
 
 // reportGates prints every measurement and fails on any breach, naming it. A

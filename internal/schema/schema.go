@@ -41,6 +41,7 @@ type Turn struct {
 	Tier    Tier
 	Author  Author
 	Agent   string // agent name when known; agentId is 43-46% present
+	Origin  Agent  // whose store it was read from; Agent above is a subagent's own name
 	Repo    string // resolved by internal/repo, not by internal/strip
 	Branch  string
 	CWD     string // kept raw: repo resolution may improve later

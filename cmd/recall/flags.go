@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/mayberuk/recall/internal/archive"
 	"github.com/mayberuk/recall/internal/fperr"
 )
 
@@ -13,6 +14,11 @@ import (
 // context bloat the tool exists to remove; 64 KiB is roughly 16K tokens. The cap
 // refuses rather than truncates, because a truncated answer looks complete.
 const DefaultMaxBytes int64 = 64 << 10
+
+// ProviderAuto is --provider's default: let the run's own environment decide
+// which agent's transcripts to read, the same resolution RECALL_AGENT unset
+// falls back to.
+const ProviderAuto = "auto"
 
 // Globals are the flags every verb accepts. A verb binds them onto its own
 // FlagSet, so a new verb never edits this file.
@@ -24,10 +30,17 @@ type Globals struct {
 	// Budget shapes output to roughly this many tokens instead of refusing over
 	// it. A caller budgeting a turn needs less of an answer, not an error.
 	Budget int
+
+	// Provider is the CLI's spelling of RECALL_AGENT: auto, an agent name, or
+	// all. Every verb — find, turns, when, show and doctor — reads whatever
+	// it resolves to.
+	Provider string
 }
 
 // NewGlobals returns the defaults a verb starts from.
-func NewGlobals() *Globals { return &Globals{MaxBytes: DefaultMaxBytes, Format: FormatText} }
+func NewGlobals() *Globals {
+	return &Globals{MaxBytes: DefaultMaxBytes, Format: FormatText, Provider: ProviderAuto}
+}
 
 // The output formats. jsonl is one object per line so a caller can stream or
 // pipe it; json is one object for the whole answer.
@@ -49,10 +62,15 @@ func (g *Globals) Bind(fs *flag.FlagSet) {
 	fs.BoolVar(&g.JSON, "json", g.JSON, "emit machine-readable output (the same as --format json)")
 	fs.StringVar(&g.Format, "format", g.Format, "text, json or jsonl")
 	fs.IntVar(&g.Budget, "budget", g.Budget, "shape output to roughly this many tokens instead of refusing")
+	fs.StringVar(&g.Provider, "provider", g.Provider,
+		"auto, an agent name, or all — which agent's transcripts every verb reads: find, turns, "+
+			"when, show and doctor all resolve through this")
 }
 
-// Check rejects a cap that cannot bound anything and resolves the two spellings
-// of the output format.
+// Check rejects a cap that cannot bound anything, resolves the two spellings
+// of the output format, and records an explicit --provider as the run's agent
+// selection — the same single path RECALL_AGENT resolves through, so the flag
+// wins when the two disagree.
 func (g *Globals) Check() error {
 	if g.MaxBytes <= 0 {
 		return fperr.New(fperr.ArgError, "--max-bytes must be positive, got %d", g.MaxBytes)
@@ -70,6 +88,14 @@ func (g *Globals) Check() error {
 			return fperr.New(fperr.ArgError, "--json and --format jsonl are two formats; pick one")
 		}
 		g.Format = FormatJSON
+	}
+	// auto and the zero value both mean "let the environment decide", so
+	// neither ever reaches SetSelection — which refuses an empty spec, and
+	// which would otherwise shadow RECALL_AGENT for the rest of the process.
+	if g.Provider != "" && g.Provider != ProviderAuto {
+		if err := archive.SetSelection(g.Provider); err != nil {
+			return err
+		}
 	}
 	return nil
 }
