@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/mayberuk/recall/internal/corpusgen"
+	"github.com/mayberuk/recall/internal/render"
 	"github.com/mayberuk/recall/internal/scan"
 )
 
@@ -39,6 +40,14 @@ const defaultBaseline = "perf-baseline"
 // lives — `doctor` does — would differ on the directory name alone. Nothing else
 // is rewritten: a difference anywhere outside this path is a real difference.
 const archivePlaceholder = "«ARCHIVE»"
+
+// render.NoStatsEnv is (*pair).run's second deliberate exception, set for
+// both binaries rather than normalized after the fact. The stats footer's
+// elapsed-time figure is real wall-clock time — it is not identical even
+// between two runs of the same binary — so nothing short of turning the
+// section off keeps this harness meaningful. The cost is that the stats line
+// itself goes untested at this level; TestTheStatsSectionRendersWhenItIsNotSuppressed
+// is what proves it still renders, since this comparison alone cannot.
 
 // headTurnsPerRange makes the binary under test cut the corpus into concurrent
 // ranges that this corpus is otherwise far too small to reach: 5 MB strips to
@@ -251,6 +260,89 @@ func TestTheBatteryActuallyExercisesHitsAndMisses(t *testing.T) {
 	}
 }
 
+// TestTheStatsSectionRendersWhenItIsNotSuppressed guards the suppression
+// TestOutputIsByteIdenticalToTheBaseline relies on. Suppressing the section
+// for both binaries would just as easily hide the section never rendering at
+// all, and every case above would still pass — a green suite proving nothing
+// about the feature it exists to gate. This runs the head binary once with
+// the section on and once with it off and checks that the only difference is
+// the stats line itself, plus the size footer it lengthens.
+func TestTheStatsSectionRendersWhenItIsNotSuppressed(t *testing.T) {
+	p := setup(t)
+	c := cases(p)[0]
+	dir := c.dir
+	if dir == "" {
+		dir = p.corpus.Plants[0].Cwd
+	}
+
+	suppressed := p.run(t, p.head, p.headHome, dir, c.args)
+	unsuppressed := p.runWith(t, p.head, p.headHome, dir, c.args, false)
+
+	if n := countLinesWithPrefix(suppressed.stdout, statsLinePrefix); n != 0 {
+		t.Fatalf("suppressed run has %d stats line(s), want 0:\n%s", n, suppressed.stdout)
+	}
+	if n := countLinesWithPrefix(unsuppressed.stdout, statsLinePrefix); n != 1 {
+		t.Fatalf("unsuppressed run has %d stats line(s), want exactly 1:\n%s", n, unsuppressed.stdout)
+	}
+
+	// The size footer counts the body it is appended to, and the stats line is
+	// part of that body, so the two runs' size footers necessarily differ too —
+	// dropping only the stats line and comparing would leave a known difference
+	// in the assertion and mask a real one alongside it.
+	drop := func(l string) bool {
+		return strings.HasPrefix(l, statsLinePrefix) || strings.HasSuffix(l, sizeLineSuffix)
+	}
+	strippedSuppressed := dropLines(suppressed.stdout, drop)
+	strippedUnsuppressed := dropLines(unsuppressed.stdout, drop)
+	if strippedSuppressed != strippedUnsuppressed {
+		t.Fatalf("output differs beyond the stats and size lines\nsuppressed:\n%s\nunsuppressed:\n%s",
+			strippedSuppressed, strippedUnsuppressed)
+	}
+
+	if got, want := sizeFooterLine(suppressed.stdout), sizeFooterLine(unsuppressed.stdout); got == want {
+		t.Fatalf("size footer line %q is identical between the suppressed and unsuppressed runs; "+
+			"want it to differ, since the stats line lengthens the body it measures", got)
+	}
+}
+
+// statsLinePrefix opens the stats footer's own line (internal/render's
+// Stats.line) and nothing else in the coverage footer produces it.
+const statsLinePrefix = "── scanned "
+
+// sizeLineSuffix closes the byte-count footer render.WithSize appends, and
+// nothing else in the footer ends a line this way.
+const sizeLineSuffix = " tokens"
+
+func countLinesWithPrefix(text, prefix string) int {
+	n := 0
+	for _, l := range strings.Split(text, "\n") {
+		if strings.HasPrefix(l, prefix) {
+			n++
+		}
+	}
+	return n
+}
+
+func dropLines(text string, drop func(string) bool) string {
+	lines := strings.Split(text, "\n")
+	out := lines[:0]
+	for _, l := range lines {
+		if !drop(l) {
+			out = append(out, l)
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+func sizeFooterLine(text string) string {
+	for _, l := range strings.Split(text, "\n") {
+		if strings.HasSuffix(l, sizeLineSuffix) {
+			return l
+		}
+	}
+	return ""
+}
+
 type output struct {
 	stdout, stderr string
 	code           int
@@ -271,12 +363,21 @@ func (p *pair) rangeFloor(binary string) string {
 
 func (p *pair) run(t *testing.T, binary, archive, dir string, args []string) output {
 	t.Helper()
+	return p.runWith(t, binary, archive, dir, args, true)
+}
+
+// runWith is (*pair).run with control over whether the stats section is
+// suppressed. TestTheStatsSectionRendersWhenItIsNotSuppressed is the one
+// caller that asks for false — every comparison case needs both binaries
+// suppressed so the wall-clock figure never enters the diff.
+func (p *pair) runWith(t *testing.T, binary, archive, dir string, args []string, suppressStats bool) output {
+	t.Helper()
 	cmd := exec.Command(binary, args...)
 	cmd.Dir = dir
 	// Every path recall reads is derived from these, so a variable leaking in
 	// from the developer's shell cannot point either binary at the real session
 	// store. An empty value reads as unset.
-	cmd.Env = append(os.Environ(),
+	env := append(os.Environ(),
 		"HOME="+p.home,
 		"RECALL_HOME="+archive,
 		"XDG_DATA_HOME=",
@@ -285,8 +386,17 @@ func (p *pair) run(t *testing.T, binary, archive, dir string, args []string) out
 		"NO_COLOR=1",
 		"TERM=dumb",
 		"COLUMNS=100",
+		// Pinned rather than left to the ambient environment: running this suite
+		// from inside a Codex or Cursor session would otherwise leak that agent
+		// identity into the head binary alone, which the baseline predates and
+		// cannot be compared against.
+		"RECALL_AGENT=claude-code",
 		scan.RangeFloorEnv+"="+p.rangeFloor(binary),
 	)
+	if suppressStats {
+		env = append(env, render.NoStatsEnv+"=1")
+	}
+	cmd.Env = env
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	code := 0
@@ -456,7 +566,8 @@ func build() (*pair, string, error) {
 		cmd.Dir = corpus.Plants[0].Cwd
 		cmd.Env = append(os.Environ(),
 			"HOME="+p.home, "RECALL_HOME="+w.archive,
-			"XDG_DATA_HOME=", "CLAUDE_PROJECTS_DIR=", "CLAUDE_CODE_SESSION_ID=", "NO_COLOR=1")
+			"XDG_DATA_HOME=", "CLAUDE_PROJECTS_DIR=", "CLAUDE_CODE_SESSION_ID=", "NO_COLOR=1",
+			"RECALL_AGENT=claude-code")
 		// Exit 1 is a clean miss, which is the expected answer here.
 		if out, err := cmd.CombinedOutput(); err != nil {
 			if exit, isExit := err.(*exec.ExitError); !isExit || exit.ExitCode() != 1 {

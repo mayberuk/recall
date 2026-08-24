@@ -42,6 +42,13 @@ type Query struct {
 	// NearbyMax caps the corpus terms reported per missing term on a
 	// zero-result search. Zero takes DefaultNearbyMax; negative skips the pass.
 	NearbyMax int
+
+	// CountWords asks for the counters that read the scanned text a second
+	// time: words, and lines with them. Both are opt-in because both were
+	// measured, and a second pass over the folded buffer costs 3.2% to 16.1%
+	// depending on the query shape — too much to charge every search for a
+	// figure most callers never ask for.
+	CountWords bool
 }
 
 // Match is how a query was read and what the returned turns actually carry. A
@@ -88,6 +95,25 @@ type Result struct {
 
 	TurnsScanned    int
 	SessionsScanned int
+
+	// BytesScanned is the text this search read, over exactly the turns
+	// TurnsScanned counts. It measures work rather than corpus size: a search
+	// that walked the corpus twice reports both walks, which is what Passes is
+	// there to explain.
+	BytesScanned int64
+
+	// LinesScanned and WordsScanned are populated only when Query.CountWords was
+	// set, because both need a pass over the text that BytesScanned does not.
+	// WordsCounted covers the pair, and distinguishes the two ways they can be
+	// zero — text with no lines or words in it, and a search that was never
+	// asked to count either.
+	LinesScanned int64
+	WordsScanned int64
+	WordsCounted bool
+
+	// Passes is how many walks over the corpus the search took: one to find
+	// hits, and one more when a zero-result search went back to explain itself.
+	Passes int
 
 	// TurnsBySession is conversation turns per session, counted over every turn
 	// handed to Search whatever tiers were searched. It is ranking's
@@ -148,7 +174,7 @@ func Search(turns []schema.Turn, q Query) Result {
 		want[t] = true
 	}
 
-	res := Result{Tiers: tiers}
+	res := Result{Tiers: tiers, WordsCounted: q.CountWords, Passes: 1}
 	m := compile(q)
 	mp := &m
 	res.Match = Match{Total: len(m.terms), Dropped: m.dropped}
@@ -181,7 +207,12 @@ func Search(turns []schema.Turn, q Query) Result {
 	}
 
 	if len(res.Hits) == 0 && len(m.terms) > 0 && q.NearbyMax >= 0 {
-		res.Terms = m.survey(turns, want, q.Keep, nearbyMax(q.NearbyMax))
+		var w work
+		res.Terms, w = m.survey(turns, want, q.Keep, nearbyMax(q.NearbyMax), q.CountWords)
+		res.BytesScanned += w.bytes
+		res.LinesScanned += w.lines
+		res.WordsScanned += w.words
+		res.Passes++
 	}
 	return res
 }

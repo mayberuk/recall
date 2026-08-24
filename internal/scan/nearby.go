@@ -65,7 +65,9 @@ func nearbyMax(n int) int {
 }
 
 // survey explains a zero-result search: what each term matched on its own, and
-// for the terms nothing matched, what the corpus does carry near them.
+// for the terms nothing matched, what the corpus does carry near them. It
+// returns the work it did alongside, because this is a second reading of the
+// corpus and the coverage line reports work rather than corpus size.
 //
 // Both walks are cut into contiguous ranges walked concurrently. That is safe
 // for a simpler reason than the hit path's: a range only ever accumulates, and
@@ -73,22 +75,25 @@ func nearbyMax(n int) int {
 // thing sharding must not move is where the byte budget runs out, so budgetCut
 // settles that over the whole corpus first and the ranges are cut from the
 // prefix it picks.
-func (m matcher) survey(turns []schema.Turn, want map[schema.Tier]bool, keep func(*schema.Turn) bool, max int) []TermReport {
+func (m matcher) survey(turns []schema.Turn, want map[schema.Tier]bool, keep func(*schema.Turn) bool, max int, walk bool) ([]TermReport, work) {
 	reports := make([]TermReport, len(m.terms))
 	for i := range m.terms {
 		reports[i].Term = m.terms[i].text
 	}
 	searched := func(t *schema.Turn) bool { return want[t.Tier] && (keep == nil || keep(t)) }
 
+	var done work
+
 	// A single-term search that found nothing proves that term is carried by no
 	// turn, so the counting pass would only re-derive a zero.
 	if len(m.terms) > 1 {
-		for _, counts := range overRanges(len(turns), func(lo, hi int) []int {
-			return m.count(turns[lo:hi], searched)
+		for _, r := range overRanges(len(turns), func(lo, hi int) counted {
+			return m.count(turns[lo:hi], searched, walk)
 		}) {
-			for j, n := range counts {
+			for j, n := range r.turns {
 				reports[j].Turns += n
 			}
+			done.absorb(r.work)
 		}
 	}
 
@@ -99,7 +104,7 @@ func (m matcher) survey(turns []schema.Turn, want map[schema.Tier]bool, keep fun
 		}
 	}
 	if len(missing) == 0 {
-		return reports
+		return reports, done
 	}
 	newCollectors := func() []*collector {
 		out := make([]*collector, len(missing))
@@ -109,10 +114,9 @@ func (m matcher) survey(turns []schema.Turn, want map[schema.Tier]bool, keep fun
 		return out
 	}
 
-	ranges := overRanges(budgetCut(turns, searched), func(lo, hi int) []*collector {
+	ranges := overRanges(budgetCut(turns, searched), func(lo, hi int) gathered {
 		cols := newCollectors()
-		gather(turns[lo:hi], searched, cols)
-		return cols
+		return gathered{cols: cols, work: gather(turns[lo:hi], searched, cols, walk)}
 	})
 
 	var found []*collector
@@ -122,32 +126,47 @@ func (m matcher) survey(turns []schema.Turn, want map[schema.Tier]bool, keep fun
 		// an answer — an empty offer, which is not the same as no report.
 		found = newCollectors()
 	default:
-		found = ranges[0]
+		found = ranges[0].cols
+		done.absorb(ranges[0].work)
 		for _, r := range ranges[1:] {
 			for i := range found {
-				found[i].absorb(r[i])
+				found[i].absorb(r.cols[i])
 			}
+			done.absorb(r.work)
 		}
 	}
 	for i, j := range missing {
 		reports[j].Nearby = found[i].best(max)
 	}
-	return reports
+	return reports, done
+}
+
+// counted and gathered pair a range's answer with the work it took, so the two
+// travel together through the merge and cannot come apart.
+type counted struct {
+	turns []int
+	work  work
+}
+
+type gathered struct {
+	cols []*collector
+	work work
 }
 
 // count is how many turns of this range carry each term on its own. It reads
 // the compiled terms and writes nothing shared, so ranges need no fork.
-func (m matcher) count(turns []schema.Turn, searched func(*schema.Turn) bool) []int {
-	out := make([]int, len(m.terms))
+func (m matcher) count(turns []schema.Turn, searched func(*schema.Turn) bool, walk bool) counted {
+	out := counted{turns: make([]int, len(m.terms))}
 	var buf []byte
 	for i := range turns {
 		if !searched(&turns[i]) {
 			continue
 		}
 		buf = fold(buf, turns[i].Text)
+		out.work.addFolded(turns[i].Text, buf, walk)
 		for j := range m.terms {
 			if m.terms[j].found(buf) {
-				out[j]++
+				out.turns[j]++
 			}
 		}
 	}
@@ -155,19 +174,22 @@ func (m matcher) count(turns []schema.Turn, searched func(*schema.Turn) bool) []
 }
 
 // gather offers every word of this range to every collector.
-func gather(turns []schema.Turn, searched func(*schema.Turn) bool, cols []*collector) {
+func gather(turns []schema.Turn, searched func(*schema.Turn) bool, cols []*collector, walk bool) work {
+	var done work
 	var buf []byte
 	for i := range turns {
 		if !searched(&turns[i]) {
 			continue
 		}
 		buf = fold(buf, turns[i].Text)
+		done.addFolded(turns[i].Text, buf, walk)
 		tokenize(buf, func(tok []byte) {
 			for _, c := range cols {
 				c.offer(tok)
 			}
 		})
 	}
+	return done
 }
 
 // budgetCut is the index of the first turn the byte budget cannot pay for, so

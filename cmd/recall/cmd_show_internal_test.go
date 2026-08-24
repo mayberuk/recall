@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mayberuk/recall/internal/fixtures"
 	"github.com/mayberuk/recall/internal/rank"
 	"github.com/mayberuk/recall/internal/render"
 	"github.com/mayberuk/recall/internal/schema"
@@ -211,5 +212,30 @@ func TestWarningsOfNamesEveryDegradationDoctorCanReport(t *testing.T) {
 func TestWarningsOfIsEmptyOnAHealthyStore(t *testing.T) {
 	if got := warningsOf(render.Doctor{}); len(got) != 0 {
 		t.Errorf("warningsOf(healthy) = %v, want none", got)
+	}
+}
+
+// TestShowWordsFlagReportsAWordCountAndItsAbsenceOmitsIt is show's own half of
+// the --words contract: newShowCmd binds the flag independently of
+// searchFlags, and it has to reach the same scan.Query.CountWords every other
+// verb's --words does.
+func TestShowWordsFlagReportsAWordCountAndItsAbsenceOmitsIt(t *testing.T) {
+	c := harness(t)
+	t.Chdir(c.Scratch)
+
+	withWords, err := callShow(t, fixtures.SessNeedle, fixtures.NeedleConversation, "--words")
+	if err != nil {
+		t.Fatalf("show --words: %v", err)
+	}
+	if !strings.Contains(withWords, " words") {
+		t.Errorf("show --words did not report a word count:\n%s", withWords)
+	}
+
+	without, err := callShow(t, fixtures.SessNeedle, fixtures.NeedleConversation)
+	if err != nil {
+		t.Fatalf("show: %v", err)
+	}
+	if strings.Contains(without, " words") {
+		t.Errorf("show without --words still reported a word count:\n%s", without)
 	}
 }

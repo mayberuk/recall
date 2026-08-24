@@ -1,13 +1,16 @@
 package render
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/mayberuk/recall/internal/schema"
 )
+
+// NoStatsEnv, when set, tells cmd/recall to leave Coverage.Stats nil. This
+// package never reads the environment itself — only the flag it names.
+const NoStatsEnv = "RECALL_NO_STATS"
 
 // Limit is a cap the caller chose that changed what was shown. Every one of
 // these appears in the coverage line: a result list cut down silently is
@@ -84,6 +87,10 @@ type Scope struct {
 // contract rather than a summary: the requirements dealbreaker is a silent
 // false negative, so the tiers left out are stated on every searching command.
 //
+// It is also, now that Stats hangs off it, the footer's whole data model —
+// archive/session coverage plus the per-query performance telemetry — not
+// something narrowly about coverage in the archival sense alone.
+//
 // LiveFrom and ContentFrom are different numbers and are never conflated.
 // LiveFrom is the oldest mtime still on disk, which is what Claude Code's
 // cleanup deletes next; ContentFrom is the oldest date the archived words reach.
@@ -107,23 +114,58 @@ type Coverage struct {
 	// matched, for instance. They print as coverage lines because anything
 	// that makes a search less complete than it looks belongs in the footer.
 	Notes []string `json:"notes,omitempty"`
+
+	// Stats is nil when the section is off (RECALL_NO_STATS), which with
+	// omitempty leaves every byte of the JSON and JSONL forms this package
+	// emitted before Stats existed untouched.
+	Stats *Stats `json:"stats,omitempty"`
+
+	// LiveFromAt, ContentFromAt and ContentToAt are LiveFrom, ContentFrom and
+	// ContentTo as RFC3339, so a caller reads the boundaries without
+	// re-deriving them from the human line. They are plain tagged fields
+	// rather than a custom MarshalJSON so the struct and the wire agree and a
+	// consumer can unmarshal a Coverage back.
+	LiveFromAt    string `json:"live_from"`
+	ContentFromAt string `json:"content_from"`
+	ContentToAt   string `json:"content_to"`
 }
 
-// MarshalJSON emits the boundaries as RFC3339 so a caller reads them without
-// re-deriving them from the human line.
-func (c Coverage) MarshalJSON() ([]byte, error) {
-	type plain Coverage
-	return json.Marshal(struct {
-		plain
-		LiveFromAt    string `json:"live_from"`
-		ContentFromAt string `json:"content_from"`
-		ContentToAt   string `json:"content_to"`
-	}{
-		plain:         plain(c),
-		LiveFromAt:    Stamp(c.LiveFrom),
-		ContentFromAt: Stamp(c.ContentFrom),
-		ContentToAt:   Stamp(c.ContentTo),
-	})
+// Stats is what a search cost: how much of the corpus it read, how long that
+// took, and how many passes it took to answer. It is the machine-readable
+// surface a later MCP caller reads instead of recomputing these numbers from
+// the rendered text.
+//
+// Lines and Words are only as good as LinesKnown and WordsKnown say: counting
+// either costs a second pass over the scanned text, so a search that was not
+// asked to count reports zero and says so rather than implying an empty
+// corpus. Passes counts the readings this footer explains — not corpus walks
+// — so a reader who divides Bytes by Passes does not get corpus size.
+type Stats struct {
+	Bytes      int64   `json:"bytes"`
+	Lines      int64   `json:"lines"`
+	LinesKnown bool    `json:"lines_known"`
+	Words      int64   `json:"words"`
+	WordsKnown bool    `json:"words_known"`
+	Turns      int     `json:"turns"`
+	Passes     int     `json:"passes"`
+	ElapsedMS  float64 `json:"elapsed_ms"`
+}
+
+// line renders the stats footer, the coverage line Lines appends last.
+func (s Stats) line() string {
+	segs := []string{"scanned " + byteSize(int(s.Bytes))}
+	if s.LinesKnown {
+		segs = append(segs, fmt.Sprintf("%d %s", s.Lines, plural(int(s.Lines), "line", "lines")))
+	}
+	if s.WordsKnown {
+		segs = append(segs, fmt.Sprintf("%d %s", s.Words, plural(int(s.Words), "word", "words")))
+	}
+	segs = append(segs, fmt.Sprintf("%d %s", s.Turns, plural(s.Turns, "turn", "turns")))
+	if s.Passes > 1 {
+		segs = append(segs, fmt.Sprintf("%d %s", s.Passes, plural(s.Passes, "pass", "passes")))
+	}
+	segs = append(segs, duration(s.ElapsedMS))
+	return "── " + strings.Join(segs, " · ")
 }
 
 // Lines is the coverage footer, one string per line, without the trailing
@@ -140,6 +182,9 @@ func (c Coverage) Lines() []string {
 	}
 	for _, n := range c.Notes {
 		out = append(out, "── "+n)
+	}
+	if c.Stats != nil {
+		out = append(out, c.Stats.line())
 	}
 	return out
 }

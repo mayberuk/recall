@@ -139,10 +139,46 @@ func TestByteSizeScalesToTheNearestUnit(t *testing.T) {
 		{500, "500 B"},
 		{4096, "4.0 KB"},
 		{5 * 1024 * 1024, "5.0 MB"},
+		{2 * 1024 * 1024 * 1024, "2.0 GB"},
 	}
 	for _, tc := range cases {
 		if got := byteSize(tc.n); got != tc.want {
 			t.Errorf("byteSize(%d) = %q, want %q", tc.n, got, tc.want)
+		}
+	}
+}
+
+// TestByteSizeCrossesTheGBBoundary is the case above the MB branch: a
+// multi-pass all-tier search reports gigabytes rather than four-digit
+// megabytes.
+func TestByteSizeCrossesTheGBBoundary(t *testing.T) {
+	if got, want := byteSize(1024*1024*1024-1), "1024.0 MB"; got != want {
+		t.Errorf("byteSize(1 GB - 1) = %q, want %q", got, want)
+	}
+	if got, want := byteSize(1024*1024*1024), "1.0 GB"; got != want {
+		t.Errorf("byteSize(1 GB) = %q, want %q", got, want)
+	}
+}
+
+// TestDurationCoarsensAtEachBoundary matches the three regimes a human reads
+// fastest: a decimal below a millisecond so no work does not read as no time,
+// whole milliseconds through a second, and a decimal of seconds beyond it.
+func TestDurationCoarsensAtEachBoundary(t *testing.T) {
+	cases := []struct {
+		ms   float64
+		want string
+	}{
+		{0.4, "0.4 ms"},
+		{0.999, "1.0 ms"},
+		{1, "1 ms"},
+		{27, "27 ms"},
+		{999, "999 ms"},
+		{1000, "1.0 s"},
+		{1400, "1.4 s"},
+	}
+	for _, tc := range cases {
+		if got := duration(tc.ms); got != tc.want {
+			t.Errorf("duration(%v) = %q, want %q", tc.ms, got, tc.want)
 		}
 	}
 }

@@ -616,6 +616,19 @@ func showMatches(t *testing.T, args ...string) int {
 	return int(decodeJSON(t, out)["matches"].(float64))
 }
 
+// suppressStatsForCapTest turns off the stats footer for the duration of a
+// test. The tests that call this compare byte sizes across two separate
+// invocations of the same command; elapsed_ms is a real wall-clock
+// measurement that can render to a different width each time, which would
+// make the comparison flaky for a reason that has nothing to do with the
+// byte-cap arithmetic under test.
+func suppressStatsForCapTest(t *testing.T) {
+	t.Helper()
+	was := statsSuppressed
+	statsSuppressed = true
+	t.Cleanup(func() { statsSuppressed = was })
+}
+
 // TestShowFitsToTheCapAndDeclaresTheCut is the repair for a defect that made a
 // question shape docs/requirements.md forbids cutting fail by default: an
 // ordinary session at default settings refused outright. Bounded output is
@@ -623,6 +636,7 @@ func showMatches(t *testing.T, args ...string) int {
 func TestShowFitsToTheCapAndDeclaresTheCut(t *testing.T) {
 	c := harness(t)
 	t.Chdir(c.Scratch)
+	suppressStatsForCapTest(t)
 
 	matches := showMatches(t, fixtures.SessNeedle, "adapter", "--around", "0")
 	full := showSize(t, fixtures.SessNeedle, "adapter", "--around", "0")
@@ -659,6 +673,7 @@ func TestShowFitsToTheCapAndDeclaresTheCut(t *testing.T) {
 func TestShowFullRefusesRatherThanFitting(t *testing.T) {
 	c := harness(t)
 	t.Chdir(c.Scratch)
+	suppressStatsForCapTest(t)
 
 	full := showSize(t, fixtures.SessNeedle, "--full")
 	out, err := callShow(t, fixtures.SessNeedle, "--full", "--max-bytes", itoa(full-1))
@@ -695,6 +710,7 @@ func TestShowRefusesWhenNotEvenOneMatchFits(t *testing.T) {
 func TestShowJSONFitsToTheSameCap(t *testing.T) {
 	c := harness(t)
 	t.Chdir(c.Scratch)
+	suppressStatsForCapTest(t)
 
 	matches := showMatches(t, fixtures.SessNeedle, "adapter", "--around", "0")
 	full := showSize(t, fixtures.SessNeedle, "adapter", "--around", "0", "--json")

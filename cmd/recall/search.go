@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"sort"
 	"strings"
@@ -18,6 +19,13 @@ import (
 	"github.com/mayberuk/recall/internal/schema"
 	"github.com/mayberuk/recall/internal/strip"
 )
+
+// statsSuppressed turns the stats footer off for both binaries the
+// differential harness compares — a wall-clock figure cannot be
+// byte-identical between two runs, so the harness sets RECALL_NO_STATS and
+// reads nothing else here. Read once at process start, the way
+// internal/scan reads minShardTurns.
+var statsSuppressed = os.Getenv(render.NoStatsEnv) != ""
 
 // Defaults for the declared caps. They are declared rather than silent: scan
 // emits one hit per occurrence and puts no ceiling on it, so a query like "the"
@@ -52,6 +60,7 @@ type searchFlags struct {
 
 	Brief bool
 	IDs   bool
+	Words bool
 
 	filter filter
 }
@@ -85,6 +94,7 @@ func (s *searchFlags) bindFor(fs *flag.FlagSet, unit, ids string) {
 	fs.BoolVar(&s.IncludeRecall, "include-recall", s.IncludeRecall, "include recall's own recorded commands and output")
 	fs.BoolVar(&s.Brief, "brief", s.Brief, "one line per session, no snippets")
 	fs.BoolVar(&s.IDs, "ids", s.IDs, "print "+ids+" only, one per line")
+	fs.BoolVar(&s.Words, "words", s.Words, "also count the words scanned, and the lines with them — a second pass over the scanned bytes")
 }
 
 func (s *searchFlags) check() error {
@@ -197,6 +207,57 @@ type corpus struct {
 	// refreshedAgo is how stale the archive is in words. With --no-update in the
 	// mix a caller otherwise cannot tell whether it is reading current data.
 	refreshedAgo string
+
+	// startedAt is set on the first line of openCorpus, so the elapsed figure
+	// the stats footer reports covers the archive refresh, the load, every
+	// scan and every probe. It excludes flag parsing before it and the final
+	// render-and-write after it: the latter cannot be included without the
+	// fixpoint render.WithSize needs, which elapsed cannot converge on.
+	startedAt time.Time
+
+	// work is what every scan.Search call on this corpus has cost so far,
+	// summed across however many passes one command makes.
+	work searchWork
+
+	// elsewhereCache memoises (*corpus).elsewhere by query, so the --budget
+	// retry loop in fitToBudget cannot re-run — or re-count — the
+	// whole-machine probe. A corpus is used by one goroutine per command:
+	// fitToBudget's retries are a sequential loop, never concurrent calls, so
+	// the map needs no lock.
+	elsewhereCache map[string]elsewhereHit
+}
+
+// searchWork accumulates what every scan.Search call on one corpus actually
+// cost: the scoped search, the wider probes, and the survey a zero-result
+// Search runs on its own. Under-reporting work that happened is the same
+// failure as overstating it, so every pass is added in rather than only the
+// first.
+type searchWork struct {
+	bytes, lines, words int64
+	turns, passes       int
+
+	// wordsCounted is true once any recorded pass asked for CountWords. All
+	// passes in one command carry the same --words value, so this only ever
+	// flips once.
+	wordsCounted bool
+}
+
+// record folds one scan's cost into the corpus's running total.
+func (c *corpus) record(res scan.Result) {
+	c.work.bytes += res.BytesScanned
+	c.work.turns += res.TurnsScanned
+	c.work.passes += res.Passes
+	if res.WordsCounted {
+		c.work.wordsCounted = true
+		c.work.lines += res.LinesScanned
+		c.work.words += res.WordsScanned
+	}
+}
+
+// elsewhereHit is one query's memoised elsewhere result.
+type elsewhereHit struct {
+	repos []render.Elsewhere
+	terms []render.Term
 }
 
 // openCorpus wires the real strip and repo implementations into the archive
@@ -208,11 +269,12 @@ type corpus struct {
 // the archive's worker pool and strip.Stripper is safe for that, while Resolve
 // runs single-threaded because resolving an identity reads git state.
 func openCorpus(noUpdate bool, tiers []schema.Tier) (*corpus, error) {
+	startedAt := time.Now()
 	store, err := archive.Open(archive.Options{Strip: strip.New().Strip, Resolve: repo.New().Repo})
 	if err != nil {
 		return nil, err
 	}
-	c := &corpus{store: store, tiers: tiers}
+	c := &corpus{store: store, tiers: tiers, startedAt: startedAt}
 	// The cold build takes a second or two and used to be silent, which reads
 	// as a hang to a caller that has never run the tool before. It is announced
 	// before the work, not after it.
@@ -349,8 +411,10 @@ func (c *corpus) search(q string, f *searchFlags, mode rank.Mode) searched {
 		// surveys the corpus for nearby terms itself. Surveying the scoped
 		// slice first costs a second tokenizing pass for an answer strictly
 		// worse than the one about to replace it.
-		NearbyMax: nearbySurvey(sc),
+		NearbyMax:  nearbySurvey(sc),
+		CountWords: f.Words,
 	})
+	c.record(res)
 	hits := res.Hits
 	if f.Sort == "recent" {
 		mode = rank.Recent
@@ -372,14 +436,31 @@ func (c *corpus) elsewhere(q string, f *searchFlags, sc render.Scope) ([]render.
 	if sc.All || sc.Repo == "" {
 		return nil, nil
 	}
+	if hit, ok := c.elsewhereCache[q]; ok {
+		return hit.repos, hit.terms
+	}
+	repos, terms := c.elsewhereUncached(q, f, sc)
+	if c.elsewhereCache == nil {
+		c.elsewhereCache = map[string]elsewhereHit{}
+	}
+	c.elsewhereCache[q] = elsewhereHit{repos: repos, terms: terms}
+	return repos, terms
+}
+
+// elsewhereUncached runs the whole-machine probe elsewhere memoises. It scans
+// the corpus that costs a search this footer has to account for — the caller
+// records it into the corpus's work exactly once, by way of the cache.
+func (c *corpus) elsewhereUncached(q string, f *searchFlags, sc render.Scope) ([]render.Elsewhere, []render.Term) {
 	wide := scan.Search(c.turns, scan.Query{
-		Text:     q,
-		Tiers:    c.tiers,
-		Exact:    f.Exact,
-		AllTerms: f.AllTerms,
-		Not:      f.Not,
-		Keep:     f.filter.keep(),
+		Text:       q,
+		Tiers:      c.tiers,
+		Exact:      f.Exact,
+		AllTerms:   f.AllTerms,
+		Not:        f.Not,
+		Keep:       f.filter.keep(),
+		CountWords: f.Words,
 	})
+	c.record(wide)
 	hits := wide.Hits
 	if len(hits) == 0 {
 		return nil, termViews(wide.Terms)
@@ -427,14 +508,16 @@ func (c *corpus) betterElsewhere(q string, f *searchFlags, s searched) []string 
 		return nil
 	}
 	wide := scan.Search(c.turns, scan.Query{
-		Text:      q,
-		Tiers:     c.tiers,
-		Exact:     f.Exact,
-		AllTerms:  f.AllTerms,
-		Not:       f.Not,
-		Keep:      f.filter.keep(),
-		NearbyMax: -1,
+		Text:       q,
+		Tiers:      c.tiers,
+		Exact:      f.Exact,
+		AllTerms:   f.AllTerms,
+		Not:        f.Not,
+		Keep:       f.filter.keep(),
+		NearbyMax:  -1,
+		CountWords: f.Words,
 	})
+	c.record(wide)
 	if wide.Match.Required <= s.scan.Match.Required {
 		return nil
 	}
@@ -471,7 +554,7 @@ func displayRepo(id string) string {
 // coverageOf assembles the line every searching command emits. Both boundaries
 // come from the archive and neither is derived from the other.
 func (c *corpus) coverageOf(res scan.Result, f *searchFlags, skipped drops, limits []render.Limit, notes ...string) render.Coverage {
-	return render.Coverage{
+	cov := render.Coverage{
 		Sessions:         res.Sessions,
 		SessionsSearched: res.SessionsScanned,
 		Turns:            res.Turns,
@@ -481,6 +564,9 @@ func (c *corpus) coverageOf(res scan.Result, f *searchFlags, skipped drops, limi
 		LiveFrom:         c.coverage.LiveFrom,
 		ContentFrom:      c.coverage.ContentFrom,
 		ContentTo:        c.coverage.ContentTo,
+		LiveFromAt:       render.Stamp(c.coverage.LiveFrom),
+		ContentFromAt:    render.Stamp(c.coverage.ContentFrom),
+		ContentToAt:      render.Stamp(c.coverage.ContentTo),
 		ArchiveReaches:   c.coverage.ReachesBeforeLive(),
 		Refreshed:        c.refreshed,
 		RefreshedAgo:     c.refreshedAgo,
@@ -495,6 +581,26 @@ func (c *corpus) coverageOf(res scan.Result, f *searchFlags, skipped drops, limi
 		Limits: append(limits, filterLimits(f, res)...),
 		Notes:  append(notes, c.notes(f, skipped)...),
 	}
+	if !statsSuppressed {
+		cov.Stats = &render.Stats{
+			Bytes:      c.work.bytes,
+			Lines:      c.work.lines,
+			LinesKnown: c.work.wordsCounted,
+			Words:      c.work.words,
+			WordsKnown: c.work.wordsCounted,
+			Turns:      c.work.turns,
+			Passes:     c.work.passes,
+			ElapsedMS:  elapsedMS(c.startedAt),
+		}
+	}
+	return cov
+}
+
+// elapsedMS is the time since startedAt in milliseconds, rounded to one
+// decimal place so the figure a caller times a search by is stable rather
+// than a float with as many digits as the clock happened to return.
+func elapsedMS(startedAt time.Time) float64 {
+	return math.Round(float64(time.Since(startedAt).Microseconds())/100) / 10
 }
 
 func (c *corpus) notes(f *searchFlags, skipped drops) []string {

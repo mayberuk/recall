@@ -1,9 +1,11 @@
 package scan
 
 import (
+	"bytes"
 	"os"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/mayberuk/recall/internal/schema"
@@ -52,6 +54,72 @@ type shard struct {
 	turns    int
 	scanned  int
 	sessions map[string]*sessionState
+
+	work
+}
+
+// work is how much text a walk read, in the units the coverage line reports.
+// Every field merges by addition, which is what lets a corpus cut into ranges
+// report the same figures as a single pass.
+type work struct {
+	bytes, lines, words int64
+}
+
+// addFolded records one turn from the buffer fold has just written. That buffer
+// is the same length as the text with every byte position preserved, so it
+// gives the same counts as the original and is the copy already in cache.
+//
+// walk asks for the two counters that read the text again. Bytes are a single
+// add and cost nothing measurable; a second pass over the buffer does cost,
+// even a vectorized one against a buffer this hot — counting lines on every
+// search measured +3.2% to +16.1% across the benchmark's query shapes, against
+// a pre-registered ceiling of 3%. So lines went behind the same opt-in as
+// words rather than being charged to searches that never asked for either.
+func (w *work) addFolded(text string, folded []byte, walk bool) {
+	w.bytes += int64(len(text))
+	if !walk {
+		return
+	}
+	w.lines += int64(bytes.Count(folded, []byte{'\n'}))
+	w.words += countWords(folded)
+}
+
+// addText records one turn on the path where nothing folds it, so a query with
+// no terms reports the same figures as one with them.
+func (w *work) addText(text string, walk bool) {
+	w.bytes += int64(len(text))
+	if !walk {
+		return
+	}
+	w.lines += int64(strings.Count(text, "\n"))
+	w.words += countWords(text)
+}
+
+func (w *work) absorb(other work) {
+	w.bytes += other.bytes
+	w.lines += other.lines
+	w.words += other.words
+}
+
+// countWords counts word starts: a non-whitespace byte whose predecessor is
+// whitespace or the start of the text.
+func countWords[T string | []byte](s T) int64 {
+	var n int64
+	// The start of the text is a boundary, so its first non-space byte opens a
+	// word.
+	boundary := true
+	for i := 0; i < len(s); i++ {
+		space := spaceByte(s[i])
+		if boundary && !space {
+			n++
+		}
+		boundary = space
+	}
+	return n
+}
+
+func spaceByte(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\n' || c == '\r'
 }
 
 // sessionsPerShard sizes a range's session map. Sizing every range for the whole
@@ -194,9 +262,13 @@ func scanRange(turns []schema.Turn, q Query, m *matcher, want map[schema.Tier]bo
 		sh.scanned++
 
 		if len(m.terms) == 0 {
+			sh.addText(turn.Text, q.CountWords)
 			continue
 		}
 		buf = fold(buf, turn.Text)
+		// A turn the exclusion below rejects was still read, so it is counted
+		// before that test rather than after it.
+		sh.addFolded(turn.Text, buf, q.CountWords)
 		if m.excluded(buf) {
 			continue
 		}
@@ -292,6 +364,9 @@ func mergeShards(shards []shard, res *Result, terms int) merged {
 		sh := &shards[i]
 		res.Turns += sh.turns
 		res.TurnsScanned += sh.scanned
+		res.BytesScanned += sh.bytes
+		res.LinesScanned += sh.lines
+		res.WordsScanned += sh.words
 		for id, state := range sh.sessions {
 			merged := sessions[id]
 			if merged == nil {
@@ -339,6 +414,9 @@ func mergeShards(shards []shard, res *Result, terms int) merged {
 func single(sh *shard, res *Result, out merged, terms int) merged {
 	res.Turns = sh.turns
 	res.TurnsScanned = sh.scanned
+	res.BytesScanned = sh.bytes
+	res.LinesScanned = sh.lines
+	res.WordsScanned = sh.words
 	res.Sessions = len(sh.sessions)
 	res.TurnsBySession = make(map[string]int, len(sh.sessions))
 	for id, state := range sh.sessions {
