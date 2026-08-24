@@ -134,10 +134,10 @@ func measureGates(size bench.Size) ([]bench.GateResult, error) {
 	}
 
 	store, err := archive.Open(archive.Options{
-		Dir:     mustTempDir(),
-		Root:    g.Root,
-		Strip:   strip.New().Strip,
-		Resolve: repo.New().Repo,
+		Dir:      mustTempDir(),
+		Root:     g.Root,
+		Provider: strip.ClaudeCode(),
+		Resolve:  repo.New().Repo,
 	})
 	if err != nil {
 		return nil, err

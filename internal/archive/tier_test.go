@@ -33,7 +33,12 @@ func storeWith(t *testing.T, root, dir string, strip func(jsonl.Record) ([]schem
 	if dir == "" {
 		dir = t.TempDir()
 	}
-	s, err := Open(Options{Dir: dir, Root: root, Strip: strip, Resolve: stubResolve})
+	p := stubbedProvider{
+		agent:  schema.AgentClaudeCode,
+		root:   root,
+		decode: func(string) Decoder { return stripDecoder(strip) },
+	}
+	s, err := Open(Options{Dir: dir, Root: root, Provider: p, Resolve: stubResolve})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

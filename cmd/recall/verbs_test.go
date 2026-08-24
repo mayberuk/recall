@@ -1044,23 +1044,21 @@ func TestClaudeCodeAndCodexProvidersAreRegisteredAtStartup(t *testing.T) {
 	}
 }
 
-// legacyDoctorText reconstructs the whole-corpus doctor report exactly the
-// way cmd_doctor.go built it before --provider existed: a bare strip.New
-// Stripper handed to archive.Open as Strip, never through a Provider or a
-// selection. It shares warningsOf, intact, exists and plural with the current
-// code, because those did not change; only how the store is opened and where
-// the observation comes from did.
-func legacyDoctorText(t *testing.T, dir string) []byte {
+// directDoctorText builds the whole-corpus doctor report from a single store
+// opened directly, with no selection and no per-agent block labelling. It
+// shares warningsOf, intact, exists and plural with the current code, so the
+// only thing that differs between the two is the machinery under test.
+func directDoctorText(t *testing.T, dir string) []byte {
 	t.Helper()
-	stripper := strip.New()
+	provider := strip.ClaudeCode()
 	store, err := archive.Open(archive.Options{
-		Dir:     dir,
-		Strip:   stripper.Strip,
-		Resolve: repo.New().Repo,
-		Force:   true,
+		Dir:      dir,
+		Provider: provider,
+		Resolve:  repo.New().Repo,
+		Force:    true,
 	})
 	if err != nil {
-		t.Fatalf("legacy archive.Open: %v", err)
+		t.Fatalf("direct archive.Open: %v", err)
 	}
 
 	var found archive.Report
@@ -1072,20 +1070,20 @@ func legacyDoctorText(t *testing.T, dir string) []byte {
 	default:
 		found, err = store.Verify()
 		if err != nil {
-			t.Fatalf("legacy Verify (found): %v", err)
+			t.Fatalf("direct Verify (found): %v", err)
 		}
 		checked = true
 	}
 
 	res, err := store.Update()
 	if err != nil {
-		t.Fatalf("legacy Update: %v", err)
+		t.Fatalf("direct Update: %v", err)
 	}
 	rep, err := store.Verify()
 	if err != nil {
-		t.Fatalf("legacy Verify: %v", err)
+		t.Fatalf("direct Verify: %v", err)
 	}
-	obs := stripper.Observation()
+	obs := provider.Observation()
 
 	view := render.Doctor{
 		Verb:     "doctor",
@@ -1151,29 +1149,30 @@ func legacyDoctorText(t *testing.T, dir string) []byte {
 	return view.Text()
 }
 
-// TestDoctorDefaultSelectionOutputIsUnchanged proves the new code prints the
-// same bytes on the same corpus as the pre-provider code, rather than trust a
-// hardcoded golden value: the fixture's remoteless-repo identity embeds the
-// scratch directory's own path, so a tier's byte size is not stable across
-// separate test runs and can only be compared within one, against the same
+// TestDoctorDefaultSelectionOutputIsUnchanged proves that routing a
+// single-agent default run through the selection machinery prints the same
+// bytes as opening that one store directly, rather than trust a hardcoded
+// golden value: the fixture's remoteless-repo identity embeds the scratch
+// directory's own path, so a tier's byte size is not stable across separate
+// test runs and can only be compared within one, against the same
 // materialized corpus.
 func TestDoctorDefaultSelectionOutputIsUnchanged(t *testing.T) {
 	pinClaudeCodeSelection(t)
 	c, home := harnessAt(t)
 	t.Chdir(c.Scratch)
 
-	legacyDir := filepath.Join(home, "legacy")
-	want := legacyDoctorText(t, legacyDir)
+	directDir := filepath.Join(home, "direct")
+	want := directDoctorText(t, directDir)
 
 	out, err := callDoctor(t)
 	if err != nil {
 		t.Fatalf("doctor: %v", err)
 	}
-	norm := strings.NewReplacer(legacyDir, "<ARCHIVE>", home, "<ARCHIVE>")
+	norm := strings.NewReplacer(directDir, "<ARCHIVE>", home, "<ARCHIVE>")
 	got := norm.Replace(out)
 	wantNorm := norm.Replace(string(want))
 	if got != wantNorm {
-		t.Errorf("doctor's default-selection output no longer matches the pre-provider code on the same corpus:\n--- got ---\n%s\n--- want ---\n%s", got, wantNorm)
+		t.Errorf("doctor's default-selection output no longer matches a directly-opened store on the same corpus:\n--- got ---\n%s\n--- want ---\n%s", got, wantNorm)
 	}
 	if strings.Contains(out, "agent      ") {
 		t.Errorf("a single-agent default run printed a block label it never used to:\n%s", out)

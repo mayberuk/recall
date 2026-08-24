@@ -1,7 +1,6 @@
 package archive
 
 import (
-	"path/filepath"
 	"sort"
 
 	"github.com/mayberuk/recall/internal/jsonl"
@@ -48,27 +47,6 @@ type Provider interface {
 	// Root.
 	Decoder(rel string) Decoder
 }
-
-// stripProvider is an injected strip function seen as a Provider, which is how
-// a caller that predates the provider seam keeps working unchanged: it names
-// claude-code, reads claude-code's own root, and never consults the run's
-// agent selection.
-type stripProvider struct {
-	strip func(jsonl.Record) ([]schema.Turn, bool)
-}
-
-func (stripProvider) Agent() schema.Agent          { return schema.AgentClaudeCode }
-func (stripProvider) Root() (string, error)        { return DefaultRoot() }
-func (stripProvider) IsTranscript(rel string) bool { return filepath.Ext(rel) == ".jsonl" }
-func (stripProvider) NeedsHead() bool              { return false }
-
-func (p stripProvider) Decoder(string) Decoder { return stripDecoder(p.strip) }
-
-// stripDecoder holds no state, so every file in a legacy read gets an
-// equivalent one and the concurrency of that read is unchanged.
-type stripDecoder func(jsonl.Record) ([]schema.Turn, bool)
-
-func (d stripDecoder) Turns(rec jsonl.Record) ([]schema.Turn, bool) { return d(rec) }
 
 var providers = map[schema.Agent]Provider{}
 

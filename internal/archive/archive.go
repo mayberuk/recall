@@ -32,8 +32,8 @@ const (
 // fails at Open rather than silently producing turns with no repo.
 //
 // Which agent the store holds is settled by the first of these that is set:
-// Provider, Agent, then the run's own Selection — except that Root or Strip
-// takes the store to claude-code without consulting the selection at all.
+// Provider, Agent, then the run's own Selection. Root names a session store to
+// walk but never decides whose it is.
 type Options struct {
 	// Dir is the archive root. Every agent but claude-code keeps its files in
 	// a subdirectory of it; claude-code keeps the root itself, because that is
@@ -52,13 +52,6 @@ type Options struct {
 	// Provider supplies one directly, for a caller holding an unregistered
 	// one.
 	Provider Provider
-
-	// Strip is the claude-code seam that predates providers: passing it opts
-	// the store out of agent selection entirely and pins it to claude-code's
-	// agent, root and directory. It is called from several goroutines at once
-	// and must be safe for that. The searching verbs move to Provider when
-	// internal/strip registers one, and this goes with them.
-	Strip func(jsonl.Record) ([]schema.Turn, bool)
 
 	// Resolve fills a turn's repo identity from its cwd. It runs after the
 	// reads, on one goroutine, because resolving one starts a git process.
@@ -170,10 +163,9 @@ func Open(opt Options) (*Store, error) {
 	}, nil
 }
 
-// provider settles which agent the store reads, first match winning. Root and
-// Strip are the legacy claude-code seam and short-circuit the selection: a
-// caller that named a session store, or handed over a strip function, asked
-// for claude-code whatever the run's agent selection resolves to.
+// provider settles which agent the store reads, first match winning: one the
+// caller supplied, the registered provider for a named agent, else whatever
+// the run's own selection resolves to.
 func (opt Options) provider() (Provider, error) {
 	switch {
 	case opt.Provider != nil:
@@ -185,12 +177,8 @@ func (opt Options) provider() (Provider, error) {
 				"unknown agent %q; registered agents are %s", opt.Agent, registeredAgentNames())
 		}
 		return p, nil
-	case opt.Root == "" && opt.Strip == nil:
-		return selectedProvider()
-	case opt.Strip == nil:
-		return nil, fperr.New(fperr.Internal, "archive: no strip function was injected")
 	}
-	return stripProvider{strip: opt.Strip}, nil
+	return selectedProvider()
 }
 
 // selectedProvider resolves the run's selection down to the one provider a

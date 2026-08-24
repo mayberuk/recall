@@ -1,119 +1,102 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/sh
+# Installs recall from its GitHub releases.
+#
+#   curl -fsSL https://raw.githubusercontent.com/mayberuk/recall/main/install.sh | sh
+#
+# Downloads the binary for this machine, checks it against the published
+# sha256, and puts it in ~/.local/bin. Registers recall with nothing: reaching
+# it from a coding agent is `recall mcp install <client>`, which is a separate
+# and deliberate step.
+#
+# Honours RECALL_VERSION (default: the latest release) and RECALL_INSTALL_DIR
+# (default: ~/.local/bin). Building from a checkout instead is
+# scripts/install-from-source.sh.
+set -eu
 
-here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-repo="${here}"
-bin_dir="${HOME}/.local/bin"
-target="${bin_dir}/recall"
+repo=mayberuk/recall
+install_dir=${RECALL_INSTALL_DIR:-$HOME/.local/bin}
 
-usage() {
-  cat <<'EOF'
-usage: install.sh [--force] [--help]
+say()  { printf 'install: %s\n' "$*"; }
+die()  { printf 'install: %s\n' "$*" >&2; exit 1; }
+have() { command -v "$1" >/dev/null 2>&1; }
 
-builds recall from this checkout (CGO_ENABLED=0, ./cmd/recall) and installs
-it to ~/.local/bin/recall, stamped with a version derived from git describe.
-
-flags:
-  --force   reinstall even if the built version matches what is installed
-  --help    show this message
-EOF
-}
-
-force=0
-for arg in "$@"; do
-  case "$arg" in
-    --help|-h) usage; exit 0 ;;
-    --force) force=1 ;;
-    *)
-      echo "install.sh: unknown flag '${arg}'" >&2
-      usage >&2
-      exit 2
-      ;;
-  esac
-done
-
-version_stamp() {
-  if ! git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    echo "dev"
-    return
-  fi
-  local describe date
-  describe="$(git -C "$repo" describe --tags --always --dirty 2>/dev/null || true)"
-  if [[ -z "$describe" ]]; then
-    describe="$(git -C "$repo" rev-parse --short HEAD 2>/dev/null || true)"
-  fi
-  if [[ -z "$describe" ]]; then
-    echo "dev"
-    return
-  fi
-  date="$(git -C "$repo" log -1 --format=%cd --date=format:%Y-%m-%d 2>/dev/null || true)"
-  if [[ -n "$date" ]]; then
-    echo "${describe}+${date}"
+# fetch writes a URL to a path, through whichever of curl or wget is present.
+# Both are told to fail loudly on an HTTP error: the default for each is to
+# write the error page to the file and exit 0, which would install a 404.
+fetch() {
+  if have curl; then
+    curl -fsSL "$1" -o "$2"
+  elif have wget; then
+    wget -qO "$2" "$1"
   else
-    echo "$describe"
+    die "neither curl nor wget is installed"
   fi
 }
 
-# Installing a binary is not permission to edit another tool's config file, so
-# this script never registers recall with anything — it names the two commands
-# that do and leaves the choice with whoever ran it.
-next_steps() {
-  echo "install.sh: to reach recall from an agent, 'recall mcp config <client>' prints the entry and 'recall mcp install <client>' writes it — this script registers it with nothing"
-}
+case "$(uname -s)" in
+  Linux)  os=linux ;;
+  Darwin) os=darwin ;;
+  *)      die "unsupported OS $(uname -s); Windows builds are attached to the release at https://github.com/${repo}/releases" ;;
+esac
 
-installed_version() {
-  if [[ -x "$target" ]]; then
-    "$target" --version 2>/dev/null | head -n1 | awk '{print $2}'
-  fi
-}
+case "$(uname -m)" in
+  x86_64|amd64)  arch=amd64 ;;
+  arm64|aarch64) arch=arm64 ;;
+  *)             die "unsupported architecture $(uname -m); recall publishes amd64 and arm64" ;;
+esac
 
-new_stamp="$(version_stamp)"
-old_version="$(installed_version || true)"
-
-echo "install.sh: currently installed at ${target}: ${old_version:-none}"
-echo "install.sh: build version for this checkout: ${new_stamp}"
-
-if [[ -n "${old_version}" && "${old_version}" == "${new_stamp}" && "${force}" -eq 0 ]]; then
-  echo "install.sh: already current, nothing to do"
-  next_steps
-  exit 0
+version=${RECALL_VERSION:-}
+if [ -z "$version" ]; then
+  say "resolving the latest release"
+  tmp_meta=$(mktemp)
+  fetch "https://api.github.com/repos/${repo}/releases/latest" "$tmp_meta" \
+    || die "cannot reach the GitHub releases API"
+  version=$(sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$tmp_meta" | head -n 1)
+  rm -f "$tmp_meta"
+  [ -n "$version" ] || die "could not read a tag_name from the releases API"
 fi
 
-if [[ ! -d "$bin_dir" ]]; then
-  mkdir -p "$bin_dir"
-  echo "install.sh: created ${bin_dir}"
-fi
+asset="recall-${version}-${os}-${arch}"
+base="https://github.com/${repo}/releases/download/${version}"
 
-# Same directory as the install target, so the final mv is a same-filesystem
-# rename and therefore atomic; a temp file under /tmp would not guarantee that.
-build_tmp="$(mktemp "${bin_dir}/.recall.build.XXXXXX")"
-cleanup() { rm -f "$build_tmp"; }
-trap cleanup EXIT
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT INT TERM
 
-echo "install.sh: building to ${build_tmp}"
-( cd "$repo" && CGO_ENABLED=0 go build -ldflags "-X main.version=${new_stamp}" -o "$build_tmp" ./cmd/recall )
-chmod +x "$build_tmp"
+say "downloading ${asset}"
+fetch "${base}/${asset}" "${work}/recall" || die "no such asset: ${base}/${asset}"
 
-echo "install.sh: verifying the built binary"
-if ! doctor_out="$("$build_tmp" doctor 2>&1)"; then
-  echo "install.sh: doctor check failed, refusing to install"
-  echo "$doctor_out"
-  exit 1
-fi
-if ! version_out="$("$build_tmp" --version 2>&1)"; then
-  echo "install.sh: --version check failed, refusing to install"
-  echo "$version_out"
-  exit 1
-fi
+# The checksum is the reason this script is safe to pipe into a shell: without
+# it, anything that can answer for the release host decides what gets run.
+say "verifying the checksum"
+fetch "${base}/checksums.txt" "${work}/checksums.txt" || die "the release publishes no checksums.txt"
+want=$(awk -v a="$asset" '$2 == a || $2 == "*" a {print $1}' "${work}/checksums.txt" | head -n 1)
+[ -n "$want" ] || die "checksums.txt does not list ${asset}"
 
-mv -f "$build_tmp" "$target"
-trap - EXIT
-
-if [[ -z "${old_version}" ]]; then
-  echo "install.sh: installed recall ${new_stamp} to ${target}"
-elif [[ "${old_version}" == "${new_stamp}" ]]; then
-  echo "install.sh: reinstalled recall ${new_stamp} to ${target} (--force)"
+if have sha256sum; then
+  got=$(sha256sum "${work}/recall" | cut -d' ' -f1)
+elif have shasum; then
+  got=$(shasum -a 256 "${work}/recall" | cut -d' ' -f1)
 else
-  echo "install.sh: upgraded recall from ${old_version} to ${new_stamp} at ${target}"
+  die "neither sha256sum nor shasum is installed, so the download cannot be verified"
 fi
-next_steps
+[ "$got" = "$want" ] || die "checksum mismatch for ${asset}: got ${got}, expected ${want}"
+
+chmod +x "${work}/recall"
+"${work}/recall" --version >/dev/null 2>&1 || die "the downloaded binary does not run on this machine"
+
+mkdir -p "$install_dir"
+mv -f "${work}/recall" "${install_dir}/recall"
+say "installed $("${install_dir}/recall" --version) to ${install_dir}/recall"
+
+case ":${PATH}:" in
+  *":${install_dir}:"*) ;;
+  *) say "note: ${install_dir} is not on your PATH — add it to your shell profile" ;;
+esac
+
+cat <<'NEXT'
+
+  recall guide                    which command answers which question
+  recall find <query>             which past session talked about something
+  recall mcp install claude-code  reach it from a coding agent instead
+
+NEXT

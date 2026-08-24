@@ -28,14 +28,13 @@ func OpenGroup(sel Selection, opt Options) (*Group, error) {
 	}
 	g := &Group{stores: make([]*Store, 0, len(sel.Agents))}
 	for _, agent := range sel.Agents {
-		// Root and Strip name one agent's session store, so they cannot travel
-		// across a selection; Dir can, because each store takes its own
+		// Root and Provider name one agent's session store, so they cannot
+		// travel across a selection; Dir can, because each store takes its own
 		// subdirectory of it.
 		each := opt
 		each.Agent = agent
 		each.Provider = nil
 		each.Root = ""
-		each.Strip = nil
 
 		s, err := Open(each)
 		if err != nil {

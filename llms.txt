@@ -1,0 +1,40 @@
+# recall
+
+> A Go CLI that searches every past coding-agent session transcript on a machine — Claude Code and
+> Codex CLI — from any checkout of a repo, in about 30 milliseconds, with no index. It also serves
+> the same four questions to an agent over the Model Context Protocol. Every answer states what it
+> did *not* search, and its own token cost.
+
+recall exists because coding agents key their session transcripts by checkout path, so one logical
+repository sprawls across clones and worktrees and a path-scoped search silently misses. recall
+resolves a repo by its git remote instead, making every checkout one corpus.
+
+Six commands: `find` (which session), `turns` (the passages), `show` (a conclusion in context),
+`when` (place a topic in time), `doctor` (archive integrity), `guide` (which command to use).
+Install with `curl -fsSL https://raw.githubusercontent.com/mayberuk/recall/main/install.sh | sh`;
+register it with a coding agent using `recall mcp install <client>`.
+
+## Docs
+
+- [README](https://raw.githubusercontent.com/mayberuk/recall/main/README.md): what it is, install, and the headline example
+- [Worked examples](https://raw.githubusercontent.com/mayberuk/recall/main/docs/examples.md): real output for all six commands, reproducible via scripts/demo.sh
+- [MCP integration](https://raw.githubusercontent.com/mayberuk/recall/main/docs/mcp.md): the five tools, every supported client's config path, what `install` writes
+- [For calling agents](https://raw.githubusercontent.com/mayberuk/recall/main/docs/agents.md): exit codes, `--json` and `--format jsonl`, the coverage contract, choosing a provider
+- [Changelog](https://raw.githubusercontent.com/mayberuk/recall/main/CHANGELOG.md): read before upgrading — v1.1 rebuilds the archive
+
+## Design
+
+- [Design record](https://raw.githubusercontent.com/mayberuk/recall/main/docs/design.md): every decision with the measurement behind it, and the alternatives it beat
+- [Requirements](https://raw.githubusercontent.com/mayberuk/recall/main/docs/requirements.md): the constraints that shaped the tool
+- [Benchmarks](https://raw.githubusercontent.com/mayberuk/recall/main/bench/RESULTS.md): reproducible figures against a seeded corpus, never a private store
+
+## Contributing
+
+- [AGENTS.md](https://raw.githubusercontent.com/mayberuk/recall/main/AGENTS.md): build, test and style contract for an agent working on recall's source
+- [CONTRIBUTING](https://raw.githubusercontent.com/mayberuk/recall/main/CONTRIBUTING.md): the five test tiers, the dependency rule, the assembly bar
+- [Security policy](https://raw.githubusercontent.com/mayberuk/recall/main/SECURITY.md): how to report a vulnerability
+
+## Optional
+
+- [Install script](https://raw.githubusercontent.com/mayberuk/recall/main/install.sh): POSIX sh, verifies the release sha256 before installing
+- [Shell integration](https://raw.githubusercontent.com/mayberuk/recall/main/shell/recall.zsh): the fzf front end for `recall find --fzf`

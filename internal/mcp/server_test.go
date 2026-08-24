@@ -112,6 +112,11 @@ func TestDiscoverAdvertises20260728AndNotTheLoggingCapability(t *testing.T) {
 	if res.Capabilities == nil {
 		t.Fatal("server/discover advertised no capabilities at all")
 	}
+	// Naming a deprecated field is the assertion, not an oversight: the only way
+	// to prove recall does not advertise logging is to look at the field that
+	// would carry it. The SDK keeps it functional through the deprecation
+	// window, so this stays until the field itself goes.
+	//lint:ignore SA1019 asserting the deprecated capability is absent requires naming it
 	if res.Capabilities.Logging != nil {
 		t.Error("server/discover advertises the logging capability, which is deprecated in this revision")
 	}

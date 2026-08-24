@@ -97,7 +97,7 @@ func TestForcedFullRereadProducesIdenticalBytes(t *testing.T) {
 	before := archived(t, s)
 	files := storeFiles(t, s)
 
-	forced, err := Open(Options{Dir: s.Dir(), Root: c.Root, Strip: stubStrip, Resolve: stubResolve, Force: true})
+	forced, err := Open(Options{Dir: s.Dir(), Root: c.Root, Provider: claudeCodeStub{}, Resolve: stubResolve, Force: true})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestConsecutiveRewritesProduceIdenticalFiles(t *testing.T) {
 	dir := t.TempDir()
 	prev := map[string]string{}
 	for run := range 3 {
-		s, err := Open(Options{Dir: dir, Root: c.Root, Strip: stubStrip, Resolve: stubResolve, Force: true})
+		s, err := Open(Options{Dir: dir, Root: c.Root, Provider: claudeCodeStub{}, Resolve: stubResolve, Force: true})
 		if err != nil {
 			t.Fatalf("Open: %v", err)
 		}
