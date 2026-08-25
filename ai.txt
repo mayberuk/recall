@@ -31,6 +31,7 @@ Summary: recall searches every past coding-agent session transcript on a machine
 
 # Where to read next. llms.txt is the curated map; AGENTS.md is the build contract.
 Sitemap: https://raw.githubusercontent.com/mayberuk/recall/main/llms.txt
+Homepage: https://recall.mayberuk.com
 Agents: https://raw.githubusercontent.com/mayberuk/recall/main/AGENTS.md
 Docs: https://raw.githubusercontent.com/mayberuk/recall/main/README.md
 

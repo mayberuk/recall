@@ -49,9 +49,9 @@
   }
 }
 
-@font-face{font-family:"Big Shoulders Display";src:url(/recall/fonts/bigshoulders.woff2)format("woff2");font-weight:400 800;font-display:swap}
-@font-face{font-family:"Archivo";src:url(/recall/fonts/archivo.woff2)format("woff2");font-weight:400 700;font-display:swap}
-@font-face{font-family:"JetBrains Mono";src:url(/recall/fonts/jetbrainsmono.woff2)format("woff2");font-weight:400 700;font-display:swap}
+@font-face{font-family:"Big Shoulders Display";src:url(/fonts/bigshoulders.woff2)format("woff2");font-weight:400 800;font-display:swap}
+@font-face{font-family:"Archivo";src:url(/fonts/archivo.woff2)format("woff2");font-weight:400 700;font-display:swap}
+@font-face{font-family:"JetBrains Mono";src:url(/fonts/jetbrainsmono.woff2)format("woff2");font-weight:400 700;font-display:swap}
 
 *,*::before,*::after{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}

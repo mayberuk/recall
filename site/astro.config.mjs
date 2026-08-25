@@ -1,7 +1,7 @@
 import { defineConfig } from 'astro/config';
 
 export default defineConfig({
-  site: 'https://mayberuk.github.io',
-  base: '/recall',
+  site: 'https://recall.mayberuk.com',
+  base: '/',
   build: { inlineStylesheets: 'always' },
 });
