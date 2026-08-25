@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fails if go.mod names a direct dependency outside the two that earned their
 # place (see CONTRIBUTING.md, "The external dependencies"). Indirect
-# requirements are unaffected — those come along with the allowed modules and
+# requirements are unaffected: those come along with the allowed modules and
 # are not a choice anyone made.
 set -euo pipefail
 

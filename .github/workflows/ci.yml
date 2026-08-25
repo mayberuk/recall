@@ -54,7 +54,7 @@ jobs:
 
   # Runs on current Go rather than the go.mod floor. govulncheck reports standard
   # library advisories against whichever toolchain runs it, and those are fixed by
-  # upgrading Go, not by changing this repository — scanning with the oldest
+  # upgrading Go, not by changing this repository, and scanning with the oldest
   # supported release would report them forever. staticcheck likewise tracks
   # current Go. Compatibility with the floor is the test matrix's job.
   quality:

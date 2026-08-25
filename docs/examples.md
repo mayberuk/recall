@@ -1,14 +1,14 @@
 # Worked examples
 
 Every block here is real output, not a mock-up. `./scripts/demo.sh` builds `recall`, writes the
-corpus these commands run against, and runs them — so you can reproduce the whole page. Only the
+corpus these commands run against, and runs them, so you can reproduce the whole page. Only the
 wall-clock figures in the footer will differ.
 
 The corpus is five sessions across three repos, one of which (`github.com/acme/payments`) is
 checked out twice: at `src/payments` on `main`, and at `src/payments-hotfix` on `hotfix/dedupe`.
 Every command below runs from `src/payments`.
 
-## `recall guide` — read this one first
+## `recall guide`: read this one first
 
 One screen mapping each question shape to the command that answers it. No query cost, and the
 same page the `recall_guide` MCP tool returns.
@@ -88,11 +88,11 @@ RECIPES
   recall when codepush --brief
 ```
 
-## `recall find` — which session talked about this
+## `recall find`: which session talked about this
 
 The headline case. The strongest answer is recorded in `src/payments-hotfix`, a *different
 checkout* on a branch that is not the one we are standing on, and it comes back without being
-asked for by name — because recall keys a repo on its git remote rather than its path.
+asked for by name, because recall keys a repo on its git remote rather than its path.
 
 ```console
 $ recall find idempotency
@@ -110,10 +110,10 @@ $ recall find idempotency
 ```
 
 Note the second hit: a passing mention in a different session about retry safety. Sessions are
-ranked by **concentration** — hits per conversation turn — so the session that was mostly about
+ranked by **concentration** (hits per conversation turn), so the session that was mostly about
 idempotency outranks the one that mentioned it once, regardless of which is newer.
 
-## `recall turns` — the passages themselves
+## `recall turns`: the passages themselves
 
 `find` tells you which session; `turns` gives you the text, ranked across all of them. Here it
 also demonstrates the miss path: nothing in this repo carries the query, so rather than an empty
@@ -134,7 +134,7 @@ run: recall find 'connection pool' --all
 A search that finds nothing is still an answer with coverage attached. `2 passes` in the footer
 is the miss path going back over the corpus to explain itself.
 
-## `recall when` — place a topic in time
+## `recall when`: place a topic in time
 
 ```console
 $ recall when rate limit
@@ -154,10 +154,10 @@ oldest first
 ── 1.0 KB · ~263 tokens
 ```
 
-Chronological rather than ranked, with a per-month histogram first — for answering "when did we
+Chronological rather than ranked, with a per-month histogram first, for answering "when did we
 start worrying about this" rather than "what did we decide".
 
-## `recall show` — the conclusion, in context
+## `recall show`: the conclusion, in context
 
 `turns` stamps every passage `session:uuid`, so `show --turn <uuid>` jumps straight back to it
 with the surrounding turns. `--around 1` is one turn either side; `--around 0` is the turn alone.
@@ -182,7 +182,7 @@ turns 1-3 of 6
 
 Any unique session-id prefix works, which is why `6e2b8d15` is enough.
 
-## `recall doctor` — is the archive sound
+## `recall doctor`: is the archive sound
 
 ```console
 $ recall doctor
@@ -203,16 +203,16 @@ authorship 11 human-shaped · 11 typed · 0 command-args
 
 `integrity` verifies each tier's frames, the metadata and the cursor. `coverage` states two
 different boundaries: `live` is how far back the raw transcripts still reach, `content` is what
-the archive holds — and the archive outliving the raw store is the entire point, because Claude
+the archive holds, and the archive outliving the raw store is the entire point, because Claude
 Code deletes sessions after 90 days. `skew` names the largest gap between a file's mtime and the
 newest turn inside it. `doctor` is deliberately *not* an MCP tool: it answers a question about
 the archive, not about your past sessions.
 
-## `recall-fzf` — the interactive front end
+## `recall-fzf`: the interactive front end
 
 `shell/recall.zsh` is an fzf front end over the CLI. It runs recall's own commands and renders
 their output; it never searches, ranks or parses transcripts itself. There is nothing to build
-and nothing to set up per project — source it:
+and nothing to set up per project. Source it:
 
 ```sh
 source shell/recall.zsh
@@ -226,7 +226,7 @@ recall show "$(recall-fzf --ids idempotency | head -1)"
 
 In the finder: typing re-searches, `enter` prints the session id and exits, `ctrl-o` opens the
 whole session in `$PAGER`, and `ctrl-/` toggles a preview of `recall show` for the highlighted
-row. fzf's own matching and sorting are disabled — recall did both already, and letting fzf
+row. fzf's own matching and sorting are disabled, because recall did both already, and letting fzf
 re-rank would discard the concentration ordering that makes the first result the right one.
 
 **Without a terminal** the same function prints to stdout, so it works in a pipeline and from a
@@ -249,5 +249,5 @@ whole finder. `--id-nth` lets `--track` follow a record's *identity* across relo
 screen position, so the highlight stays on the same session as results change; without it the
 cursor holds a position instead. The `result-final` event updates the header once results settle
 rather than on every keystroke, and where it is missing the plain `result` event does the same job
-slightly more often. Both were added after fzf 0.67. Everything else the finder uses — including
-`change:reload-sync`, `transform-header` and `--gap` — works there.
+slightly more often. Both were added after fzf 0.67. Everything else the finder uses, including
+`change:reload-sync`, `transform-header` and `--gap`, works there.

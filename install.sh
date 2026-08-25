@@ -90,7 +90,7 @@ say "installed $("${install_dir}/recall" --version) to ${install_dir}/recall"
 
 case ":${PATH}:" in
   *":${install_dir}:"*) ;;
-  *) say "note: ${install_dir} is not on your PATH — add it to your shell profile" ;;
+  *) say "note: ${install_dir} is not on your PATH; add it to your shell profile" ;;
 esac
 
 cat <<'NEXT'

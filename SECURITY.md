@@ -10,7 +10,7 @@ compressed archive under `~/.local/share/recall/`. Three facts bound what can go
 - **It makes no network calls, ever.** Nothing it does can exfiltrate transcript content; there
   is no vendor in the loop beyond what already received that content during the session itself.
 - **It never writes to the session store.** `~/.claude/projects/` is read-only from `recall`'s
-  point of view — it is the sole copy of the corpus, and a bug that corrupted it would be
+  point of view: it is the sole copy of the corpus, and a bug that corrupted it would be
   unrecoverable. All writes go to `recall`'s own archive directory.
 
 Because both the input and the output stay on the machine, the realistic risk is local: a

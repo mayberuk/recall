@@ -2,13 +2,13 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.svg">
     <img src="docs/assets/banner.svg" width="100%"
-         alt="recall — a line-printer ledger sheet: the command recall find idempotency returning two sessions, above the four-line footer that states what was not searched.">
+         alt="recall, a line-printer ledger sheet: the command recall find idempotency returning two sessions, above the four-line footer that states what was not searched.">
   </picture>
 </p>
 
 # recall
 
-**Search every past coding-agent session on your machine — from any checkout, in milliseconds.**
+**Search every past coding-agent session on your machine, from any checkout, in milliseconds.**
 
 [![CI](https://github.com/mayberuk/recall/actions/workflows/ci.yml/badge.svg)](https://github.com/mayberuk/recall/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/mayberuk/recall?sort=semver)](https://github.com/mayberuk/recall/releases/latest)
@@ -17,7 +17,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 You solved this before. Two months ago, in a branch you've since deleted, in a session you can't
-find. Your agent doesn't remember it, and neither do you — only that it happened.
+find. Your agent doesn't remember it, and neither do you. Only that it happened.
 
 `recall` finds it. One query reaches every session your coding agent has ever recorded on this
 machine, across every checkout, clone and worktree of the repo you're standing in. No index, no
@@ -39,8 +39,8 @@ $ recall find idempotency
 ── 1.0 KB · ~264 tokens
 ```
 
-That answer came out of a **different checkout** — `payments-hotfix`, a branch that no longer
-exists locally — found from `payments` without naming it. Every block in this README is real
+That answer came out of a **different checkout** (`payments-hotfix`, a branch that no longer
+exists locally), found from `payments` without naming it. Every block in this README is real
 output you can reproduce: `./scripts/demo.sh` builds a fixed corpus and runs them.
 
 ## Why it exists
@@ -60,7 +60,7 @@ curl -fsSL https://raw.githubusercontent.com/mayberuk/recall/main/install.sh | s
 ```
 
 Downloads the binary for your platform, verifies it against the release's published sha256, and
-installs to `~/.local/bin`. It registers recall with nothing — that is a separate, deliberate step.
+installs to `~/.local/bin`. It registers recall with nothing: that is a separate, deliberate step.
 
 <details>
 <summary>Other ways in</summary>
@@ -91,8 +91,8 @@ recall mcp install claude-code    # or codex · gemini · copilot · cursor · o
 ```
 
 `recall mcp config <client>` prints the same entry and **writes nothing**, if you'd rather paste it
-yourself. Five read-only tools — `recall_find`, `recall_turns`, `recall_show`, `recall_when`,
-`recall_guide` — each running the CLI verb it's named after, so a tool call and a command line can
+yourself. Five read-only tools (`recall_find`, `recall_turns`, `recall_show`, `recall_when`,
+`recall_guide`), each running the CLI verb it's named after, so a tool call and a command line can
 never disagree about what the corpus holds. Full client-by-client detail: **[docs/mcp.md](docs/mcp.md)**.
 
 <details>
@@ -102,7 +102,7 @@ Paste this to any agent with shell access:
 
 > Install `recall`, a CLI that searches my past coding-agent sessions, by running
 > `curl -fsSL https://raw.githubusercontent.com/mayberuk/recall/main/install.sh | sh`.
-> Then register it with yourself by running `recall mcp install <your client>` — run
+> Then register it with yourself by running `recall mcp install <your client>`. Run
 > `recall mcp config --help` to see the supported client names and pick the one that matches you.
 > Finally run `recall guide` and tell me in one line what it can answer.
 
@@ -149,7 +149,7 @@ recall show "$(recall-fzf --ids idempotency | head -1)"
 ```
 
 Type and the list re-searches; `ctrl-o` opens the whole session in your pager, `enter` prints
-its id and exits — so it composes with everything above. recall owns matching and ranking
+its id and exits, so it composes with everything above. recall owns matching and ranking
 (fzf's own are turned off), which is why the ordering you see is still concentration ranking.
 
 With no terminal the same function prints ranked records to stdout instead, so it works in a
@@ -157,7 +157,7 @@ pipeline: `recall-fzf --ids <query>` gives one session id per line.
 
 ## Fast enough that an index would be a liability
 
-Of everything Claude Code writes to disk, the actual conversation is about **3%** — 47.8 MB of a
+Of everything Claude Code writes to disk, the actual conversation is about **3%**: 47.8 MB of a
 1.52 GB session store. The rest is tool output stored twice, thinking-block signatures and
 attachments. Searching that 3% is quick enough that there is nothing left for an index to win.
 
@@ -177,7 +177,7 @@ Every figure below comes from a corpus generated from a fixed seed rather than f
 session store, so `make bench` on your machine measures the same bytes. **Small** is 5.1 MB of
 transcript across 17 files (2,972 turns); **medium** is 51.4 MB across 56 files (29,564 turns).
 
-The whole binary, invoked end to end — process start, freshness check, search, render, exit:
+The whole binary, invoked end to end (process start, freshness check, search, render, exit):
 
 | command | small | medium |
 |---|---:|---:|
@@ -197,7 +197,7 @@ is the small part:
 | scan, single term | **0.34 ms** | 47 KB | 261 |
 | scan, phrase | 0.48 ms | 211 KB | 345 |
 | scan, two terms in conjunction | 3.24 ms | 28 MB | 526 |
-| scan, a miss — every byte read, nothing found | 2.41 ms | 115 KB | 378 |
+| scan, a miss: every byte read, nothing found | 2.41 ms | 115 KB | 378 |
 | freshness check, nothing changed on disk | 0.47 ms | 169 KB | 889 |
 | load turns, conversation tier | 1.00 ms | 8.7 MB | 30 |
 | load turns, every tier | 4.99 ms | 51 MB | 95 |
@@ -208,7 +208,7 @@ buys: no B-tree to walk, no posting lists to merge, nothing to hold in sync with
 ### The thresholds it has to clear
 
 `make bench-gate` fails the build on a breach. The limits sit where the *architecture* would come
-into question — a search you can feel, an update you would notice — not next to the current
+into question (a search you can feel, an update you would notice), not next to the current
 measurement, so a breach means linear scanning stopped being viable rather than that a benchmark
 wobbled.
 
@@ -223,17 +223,17 @@ wobbled.
 | cold archive build | 4000 ms | 467.5 ms |
 
 Allocation counts are gated separately, against a committed baseline, because they are the same
-number on any machine where a nanosecond is not — `make bench-compare` fails on a 2% regression.
+number on any machine where a nanosecond is not. `make bench-compare` fails on a 2% regression.
 
-Full tables — 32 micro benchmarks, 48 end-to-end scenarios, and the corpus they ran against — are
+Full tables (32 micro benchmarks, 48 end-to-end scenarios, and the corpus they ran against) are
 in [bench/RESULTS.md](bench/RESULTS.md), regenerated by `make bench`.
 
 So there is no index: nothing to rebuild, nothing to go stale, no corruption class to guard
-against. A SQLite FTS5 prototype was built and worked — it lost on exactly those grounds.
+against. A SQLite FTS5 prototype was built and worked; it lost on exactly those grounds.
 
 ## It tells you what it didn't search
 
-Every searching command ends in a `──` footer naming what it left out — tier, scope, exclusions,
+Every searching command ends in a `──` footer naming what it left out: tier, scope, exclusions,
 and what the search cost. **If the footer doesn't mention a narrowing, that narrowing didn't
 happen.** Treat it as the coverage contract, not decoration.
 
@@ -254,7 +254,7 @@ more context than re-deriving it.
 |---|---|---|
 | Claude Code | `~/.claude/projects` | read |
 | Codex CLI | `~/.codex/sessions` (`$CODEX_HOME`) | read |
-| Gemini CLI, Cursor | — | detected, falls back to Claude Code and says so |
+| Gemini CLI, Cursor | not read | detected, falls back to Claude Code and says so |
 
 `--provider auto` (the default) detects who is asking; a name pins one; `all` searches every
 registered agent at once. Naming an agent this build cannot read is refused outright rather than
@@ -269,11 +269,11 @@ Codex archives to its own tree, so adding it never rebuilds an existing Claude C
 | [recall.mayberuk.com](https://recall.mayberuk.com) | the site: what it does, and the numbers behind it |
 | [docs/mcp.md](docs/mcp.md) | MCP tools, every client's config path, what `install` writes |
 | [docs/examples.md](docs/examples.md) | worked examples for all six commands |
-| [docs/agents.md](docs/agents.md) | exit codes, `--json`, the coverage contract — written for agents |
+| [docs/agents.md](docs/agents.md) | exit codes, `--json`, the coverage contract, written for agents |
 | [bench/RESULTS.md](bench/RESULTS.md) | every benchmark, its corpus, and the gates it ran against |
-| [CHANGELOG.md](CHANGELOG.md) | **read before upgrading** — v1.1 rebuilds the archive |
+| [CHANGELOG.md](CHANGELOG.md) | **read before upgrading**: v1.1 rebuilds the archive |
 | [AGENTS.md](AGENTS.md) | build, test and style contract for agents working *on* recall |
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).

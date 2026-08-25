@@ -55,10 +55,10 @@ version_stamp() {
 }
 
 # Installing a binary is not permission to edit another tool's config file, so
-# this script never registers recall with anything — it names the two commands
+# this script never registers recall with anything: it names the two commands
 # that do and leaves the choice with whoever ran it.
 next_steps() {
-  echo "install.sh: to reach recall from an agent, 'recall mcp config <client>' prints the entry and 'recall mcp install <client>' writes it — this script registers it with nothing"
+  echo "install.sh: to reach recall from an agent, 'recall mcp config <client>' prints the entry and 'recall mcp install <client>' writes it; this script registers it with nothing"
 }
 
 installed_version() {
