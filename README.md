@@ -1,5 +1,10 @@
-<!-- Banner slot: drop a 1280×320 SVG/PNG at docs/assets/banner.svg and replace this comment with
-     <p align="center"><img src="docs/assets/banner.svg" alt="recall" width="640"></p> -->
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.svg">
+    <img src="docs/assets/banner.svg" width="100%"
+         alt="recall — a line-printer ledger sheet: the command recall find idempotency returning two sessions, above the four-line footer that states what was not searched.">
+  </picture>
+</p>
 
 # recall
 
