@@ -1,6 +1,11 @@
 ---
 import '../styles/global.css';
 const { title, description } = Astro.props;
+
+// Unfurlers fetch these from a crawler with no page context, so every URL has
+// to be absolute. Astro.site carries the origin; Astro.url the path.
+const canonical = new URL(Astro.url.pathname, Astro.site);
+const preview = new URL(`${import.meta.env.BASE_URL}/social-preview.png`.replace(/\/{2,}/g, '/'), Astro.site);
 ---
 <html lang="en">
 <head>
@@ -9,6 +14,23 @@ const { title, description } = Astro.props;
 <title>{title}</title>
 <meta name="description" content={description} />
 <meta name="color-scheme" content="light dark" />
+<link rel="canonical" href={canonical} />
+
+<!-- The card a link to this page unfurls into. A raster, not the SVG beside it:
+     Slack, iMessage and Twitter will not render SVG in a preview. -->
+<meta property="og:type" content="website" />
+<meta property="og:url" content={canonical} />
+<meta property="og:title" content={title} />
+<meta property="og:description" content={description} />
+<meta property="og:image" content={preview} />
+<meta property="og:image:width" content="2560" />
+<meta property="og:image:height" content="1280" />
+<meta property="og:image:alt" content="recall — a line-printer ledger sheet stating what the tool searched and what it did not." />
+<meta property="og:site_name" content="recall" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content={title} />
+<meta name="twitter:description" content={description} />
+<meta name="twitter:image" content={preview} />
 <link rel="icon" type="image/svg+xml" href="/recall/favicon.svg" />
 <link rel="preload" as="font" type="font/woff2" href="/recall/fonts/bigshoulders.woff2" crossorigin />
 <link rel="preload" as="font" type="font/woff2" href="/recall/fonts/archivo.woff2" crossorigin />
