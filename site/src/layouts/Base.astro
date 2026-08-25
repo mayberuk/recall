@@ -1,0 +1,32 @@
+---
+import '../styles/global.css';
+const { title, description } = Astro.props;
+---
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{title}</title>
+<meta name="description" content={description} />
+<meta name="color-scheme" content="light dark" />
+<link rel="icon" type="image/svg+xml" href="/recall/favicon.svg" />
+<link rel="preload" as="font" type="font/woff2" href="/recall/fonts/bigshoulders.woff2" crossorigin />
+<link rel="preload" as="font" type="font/woff2" href="/recall/fonts/archivo.woff2" crossorigin />
+</head>
+<body>
+<!--
+THESIS: recall is the only search tool that records what it did NOT find; this page is a
+deck-log sheet and refuses the category's near-black hero with a faked terminal window.
+OWN-WORLD: grey-green ledger stock, printed blue rules, iron-gall ink, one rose stamp;
+Big Shoulders masthead, Archivo form furniture, JetBrains Mono for every datum; ruled
+columns throughout, no cards, no gradients.
+STORY: a developer who lost an answer reads real output, learns the footer states what
+was not searched, and copies the install line.
+FIRST VIEWPORT: masthead rule; headline as three stamped declaratives; facts set small in
+a ruled register at right; install entry beneath, which stamps ENTERED IN LOG on copy.
+FORM: Deck Log, candidate 7 of my grounded list, seed f80dcd8b.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+-->
+<slot />
+</body>
+</html>

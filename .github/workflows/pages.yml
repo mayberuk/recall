@@ -1,0 +1,70 @@
+# Builds site/ and publishes it to GitHub Pages.
+#
+# The site is source-only in the repository: dist/ is gitignored, so this
+# workflow is the single thing that turns the source into what is served. A
+# checked-in build could only ever disagree with the source beside it.
+name: pages
+
+on:
+  push:
+    branches: [main]
+    # Only the site's own inputs. A change to the Go tool does not need to
+    # redeploy a page that did not change, and this workflow's concurrency
+    # group would otherwise queue behind every unrelated push to main.
+    paths:
+      - 'site/**'
+      - 'docs/assets/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time, and let a newer commit win rather than queueing
+# behind a build whose output is already stale.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: install
+        working-directory: site
+        run: npm ci
+      - name: build
+        working-directory: site
+        run: npm run build
+      # The direction contract is an HTML comment carried in the layout. If a
+      # refactor drops it the build still succeeds and the record silently
+      # stops shipping, so assert it survived rather than trusting it did.
+      - name: the built page carries its direction contract
+        working-directory: site
+        run: |
+          if ! grep -q 'FORM: Deck Log' dist/index.html; then
+            echo "::error::dist/index.html lost the direction contract from Base.astro" >&2
+            exit 1
+          fi
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: site/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

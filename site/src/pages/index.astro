@@ -1,0 +1,386 @@
+---
+import Base from '../layouts/Base.astro';
+
+/* Three searches over the same two-conversation corpus. Ranked best-first, so
+   the stamp always lands on the top entry. Marks are computed in the browser
+   from the longest prefix the query and the word share — the visitor can see
+   exactly how much of a word matched, which is the whole fuzzy story. */
+const queries = [
+  { q:'idempotency', hits:[
+    { id:'6e2b8d15', date:'2026-06-03', repo:'github.com/acme/payments', branch:'hotfix/dedupe', count:'4 matches', remarks:[
+      { who:'you', me:true, text:'Duplicate charges again. Two merchants hit the same idempotency key and one saw the other\u2019s receipt\u2026' },
+      { who:'agent', me:false, text:'Scope the idempotency key per merchant, never globally. The key is a string the client chooses, so\u2026' } ] },
+    { id:'3b8a2c94', date:'2026-07-21', repo:'github.com/acme/payments', branch:'main', count:'1 match', remarks:[
+      { who:'agent', me:false, text:'\u2026a retry there needs the idempotency key to be safe, or it must not be retried at all.' } ] },
+  ]},
+  { q:'retries', hits:[
+    { id:'c1f47a60', date:'2026-04-18', repo:'github.com/acme/payments', branch:'spike/retry-budget', count:'7 matches', remarks:[
+      { who:'you', me:true, text:'How many retries before we give up? The queue is retrying forever and nothing pages anyone.' },
+      { who:'agent', me:false, text:'Cap it at three attempts, then dead-letter. A retry that never stops is an outage that never gets noticed.' } ] },
+    { id:'3b8a2c94', date:'2026-07-21', repo:'github.com/acme/payments', branch:'main', count:'2 matches', remarks:[
+      { who:'agent', me:false, text:'\u2026a retry there needs the idempotency key to be safe, or it must not be retried at all.' } ] },
+  ]},
+  { q:'merchant', hits:[
+    { id:'6e2b8d15', date:'2026-06-03', repo:'github.com/acme/payments', branch:'hotfix/dedupe', count:'5 matches', remarks:[
+      { who:'you', me:true, text:'Duplicate charges again. Two merchants hit the same idempotency key and one saw the other\u2019s receipt\u2026' },
+      { who:'agent', me:false, text:'Scope the idempotency key per merchant, never globally. The key is a string the client chooses, so\u2026' } ] },
+    { id:'3b8a2c94', date:'2026-07-21', repo:'github.com/acme/payments', branch:'main', count:'1 match', remarks:[
+      { who:'agent', me:false, text:'Per merchant, then \u2014 the key belongs to whoever the charge belongs to, never to the platform.' } ] },
+  ]},
+];
+
+/* The same prefix rule the browser uses, so the server-rendered first query
+   and every later one are marked identically. */
+function markup(text, query) {
+  const out = [];
+  for (const piece of text.split(/(\w+)/)) {
+    let n = 0;
+    while (n < piece.length && n < query.length && piece[n].toLowerCase() === query[n].toLowerCase()) n++;
+    if (n >= 4) out.push({ hit: piece.slice(0, n), rest: piece.slice(n) });
+    else out.push({ hit: '', rest: piece });
+  }
+  return out;
+}
+const first = queries[0];
+
+const months = [
+  {m:'FEB',on:false,n:''},{m:'MAR',on:false,n:''},{m:'APR',on:false,n:''},
+  {m:'MAY',on:true,n:'6'},{m:'JUN',on:false,n:''},{m:'JUL',on:true,n:'2'},
+];
+
+const coverage = [
+  { line:'── 3 sessions · 3 searched · conversation only — tool output NOT searched (--results)',
+    gloss:'It read what you and your agent said to each other — not the output of every command it ran. That is most of what is on disk and almost never what you want. Ask for it and this line says so.' },
+  { line:'── live to 2026-05-12 · archived before that · refreshed just now',
+    gloss:'How current the answer is. A conversation from ten minutes ago is already findable. Nothing runs in the background waiting to notice.' },
+  { line:'── scanned 3.0 KB · 14 turns · 7 ms',
+    gloss:'What it cost your machine. Seven milliseconds, from cold, reading rather than consulting.' },
+  { line:'── 1.0 KB · ~264 tokens',
+    gloss:'What the answer costs your agent to read. Checking an old decision should be cheaper than redoing it — so every answer prices itself, and you can cap it.' },
+];
+---
+<Base title="recall — search every conversation you have had with your coding agent"
+      description="recall finds any past conversation with Claude Code or Codex on your machine in about 30 milliseconds, even when you cannot remember the words you used. Works from any checkout, and your agent can search it directly.">
+
+<div class="feed l" aria-hidden="true"></div>
+<div class="feed r" aria-hidden="true"></div>
+<div class="grain" aria-hidden="true"></div>
+
+<header class="mast">
+  <div class="wrap">
+    <div class="brand">
+      <!-- The Excluded Register: a ruled ledger cell, sprocket holes down the
+           left rail, three rows found and one row broken. The break is geometry,
+           not a hue, so it survives one ink and 16px. -->
+      <svg viewBox="0 0 40 40" role="img" aria-label="recall" shape-rendering="crispEdges">
+        <rect x=".75" y=".75" width="38.5" height="38.5" fill="none" stroke="var(--rule)" stroke-width="1.5"/>
+        <line x1="9" y1="0" x2="9" y2="40" stroke="var(--rule)" stroke-width="1"/>
+        <circle cx="4.5" cy="6" r="2" fill="var(--hole)"/>
+        <circle cx="4.5" cy="20" r="2" fill="var(--hole)"/>
+        <circle cx="4.5" cy="34" r="2" fill="var(--hole)"/>
+        <rect x="13" y="5" width="22" height="5" fill="var(--ledger)"/>
+        <rect x="13" y="14" width="22" height="5" fill="var(--ledger)"/>
+        <rect x="13" y="23" width="8.4" height="5" fill="var(--carbon)"/>
+        <rect x="26.6" y="23" width="8.4" height="5" fill="var(--carbon)"/>
+        <rect x="13" y="31" width="22" height="5" fill="var(--ledger)"/>
+      </svg>
+      <b>recall</b>
+    </div>
+    <p class="formno">v1.1.0 · MIT · <a href="https://github.com/mayberuk/recall">github.com/mayberuk/recall</a></p>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="heroGrid">
+      <div>
+        <h1>Your agent forgot. Your machine <em>didn’t.</em></h1>
+        <p class="lede">Every conversation you’ve had with Claude Code or Codex is still on your
+        disk. recall finds the one you’re thinking of in <span class="num">30 ms</span> — even when
+        you’ve forgotten the words you used.</p>
+        <div class="entry" id="install">
+          <code id="cmd">curl -fsSL https://raw.githubusercontent.com/mayberuk/recall/main/install.sh | sh</code>
+          <button type="button" id="copy" aria-label="Copy the install command">Copy</button>
+          <span class="stamp" aria-hidden="true">Entered in log</span>
+        </div>
+        <p class="data" style="color:var(--ink-2);margin:.6rem 0 0;font-size:.71rem">
+          macOS · Linux · Windows. Checksum verified. Nothing left running.</p>
+      </div>
+      <dl class="reg">
+        <div><dt class="cap">Typical search</dt><dd>30 ms</dd></div>
+        <div><dt class="cap">History it reads</dt><dd>all of it</dd></div>
+        <div><dt class="cap">Setup per project</dt><dd class="none">none</dd></div>
+        <div><dt class="cap">Background process</dt><dd class="none">none</dd></div>
+        <div><dt class="cap">Your data leaves</dt><dd class="none">never</dd></div>
+      </dl>
+    </div>
+  </div>
+</div>
+
+<section class="flush">
+  <div class="wrap">
+    <p class="ask"><span class="prompt">$ recall find</span>{queries.map((qq,i) => (
+      <button type="button" class:list={['q', i === 0 && 'on']} data-q={qq.q} aria-pressed={i === 0 ? 'true' : 'false'}>{qq.q}</button>
+    ))}<span class="from">run from src/payments</span></p>
+    <div class="sheet" id="proof">
+      <span class="landed" aria-hidden="true">Found</span>
+      <table>
+        <thead><tr><th>Conversation</th><th>Date</th><th>Project</th><th>Branch</th><th>Found</th></tr></thead>
+        <tbody>
+          {first.hits.map((h,i) => (<>
+            <tr class:list={['head', i === 0 && 'mark']}>
+              <td>{h.id}</td><td>{h.date}</td><td>{h.repo}</td><td>{h.branch}</td><td>{h.count}</td>
+            </tr>
+            {h.remarks.map(r => (
+              <tr class={i === 0 ? 'mark' : undefined}>
+                <td><span class:list={['who', r.me && 'me']}>{r.who}</span></td>
+                <td class="rem" colspan="4">{markup(r.text, first.q).map(m => (<>
+                  {m.hit && <mark>{m.hit}</mark>}{m.rest}
+                </>))}</td>
+              </tr>
+            ))}
+          </>))}
+        </tbody>
+      </table>
+      <div class="carriage" aria-hidden="true"></div>
+    </div>
+    <p style="margin:.8rem 0 0;max-width:56ch">The marked one is on <b>hotfix/dedupe</b> — a branch
+    deleted locally months ago. Agents file conversations by folder, so one project scatters across
+    every clone you’ve had. recall recognises a project by its <span class="hl-g">git remote</span>,
+    so all of them are one history.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>You won’t remember the <span class="hl">words</span> you used</h2>
+    <p>So it doesn’t make you guess. <code class="data">build</code> finds <code class="data">iosBuild</code>.
+    <code class="data">retries</code> finds <code class="data">retry</code>. Case never matters.</p>
+    <div class="miss" id="miss"><pre>no turns carry "connection pooling" in github.com/acme/payments
+  connection          14 turns carry it, but not together with the rest
+  pooling             no turn carries it; nearby: <b>pool, pooled, pools</b>
+found elsewhere: 5 hits in 1 other repo
+  github.com/acme/infra                    5 hits · 1 session
+run: recall find 'connection pooling' --all</pre><div class="carriage" aria-hidden="true"></div></div>
+    <p style="margin:.85rem 0 0">Empty-handed, it still hands you the
+    <span class="hl-g">closest words in your own history</span> — and points at the project the
+    answer is actually in.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Ask <span class="hl">when</span>, not just where</h2>
+    <p>Put any topic on a timeline across your whole history.</p>
+    <div class="spine" id="spine">
+      <p class="cap">“rate limit” · first 12 May · last 21 July · 8 mentions</p>
+      <ol>{months.map(m => (
+        <li class={m.on ? 'on' : undefined}><b></b><span>{m.m}{m.n && ` ${m.n}`}</span></li>
+      ))}</ol>
+    </div>
+  </div>
+</section>
+
+<section class="flush bleed">
+  <div class="wrap" style="padding:0">
+    <div class="field">
+      <div class="wrap" style="max-width:none;padding:0">
+        <h2>Your agent can search it <em style="font-style:normal;color:var(--stamp)">itself</em></h2>
+        <p style="max-width:52ch;margin-bottom:1.5rem">recall is an MCP server too. Claude Code and
+        Codex query your history mid-task, without you pasting anything.</p>
+        <div class="entry" style="max-width:30rem"><code>recall mcp install claude-code</code></div>
+        <div class="pair" style="margin-top:1.9rem">
+          <div><h3>It reaches for it unprompted</h3><p>“Have we hit this before?” is enough. You never say the word recall.</p></div>
+          <div><h3>Answers stay small</h3><p>A few hundred tokens, not a transcript.</p></div>
+          <div><h3>Read-only, always</h3><p>Five tools. None can write, delete or alter anything.</p></div>
+          <div><h3>Nothing goes anywhere</h3><p>Your machine, your files. No account, no upload.</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>It tells you what it <span class="hl">skipped</span> <span class="pressed warn" id="everytime">Every time</span></h2>
+    <p>Most search narrows quietly, so “no results” reads as “never happened.” recall ends every
+    answer with what it did and didn’t look at.</p>
+    <div class="cov">
+      {coverage.map((c,i) => (
+        <div>
+          <button type="button" aria-expanded="false" aria-controls={`g${i}`}><span>{c.line}</span></button>
+          <p id={`g${i}`} hidden>{c.gloss}</p>
+        </div>
+      ))}
+    </div>
+    <p style="margin:1rem 0 0">If a limit isn’t printed there, it wasn’t applied.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Fast because it reads <span class="hl-g">everything</span></h2>
+    <p>No index to build, rebuild, or go stale. The conversation is only about
+    <span class="num">3%</span> of what your agent writes down — the rest is command output.</p>
+    <div class="cols">
+      <div><b>A typical search</b><span>everything, from cold</span><i>30 ms</i></div>
+      <div><b>Command output too</b><span>roughly 20× the text</span><i>93 ms</i></div>
+      <div><b>A search that finds nothing</b><span>every byte read first</span><i>113 ms</i></div>
+    </div>
+    <p class="data" style="color:var(--ink-2);margin:.9rem 0 0;font-size:.71rem">
+      143 conversations · 1.52 GB. Benchmarks run against a generated history, so they reproduce on
+      your machine — <a href="https://github.com/mayberuk/recall/blob/main/bench/RESULTS.md">the numbers</a>.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <dl>
+      <div><dt class="cap">Kept by</dt><dd>mayberuk</dd></div>
+      <div><dt class="cap">Licence</dt><dd>MIT</dd></div>
+      <div><dt class="cap">Docs</dt><dd><a href="https://github.com/mayberuk/recall#readme">README</a></dd></div>
+    </dl>
+    <p class="data" style="margin:0;color:var(--ink-2);font-size:.71rem">Sheet 1 of 1</p>
+  </div>
+</footer>
+
+<script type="application/json" id="qdata" set:html={JSON.stringify(queries)}></script>
+
+<script is:inline>
+  /* Behaviour ships inline and works before any bundle arrives. */
+  (function () {
+    var entry = document.getElementById('install'), btn = document.getElementById('copy'), cmd = document.getElementById('cmd');
+    btn.addEventListener('click', function () {
+      navigator.clipboard.writeText(cmd.textContent.trim()).then(function () {
+        entry.classList.add('done'); btn.disabled = true; btn.textContent = 'Copied';
+      }, function () {
+        var r = document.createRange(); r.selectNodeContents(cmd);
+        var s = getSelection(); s.removeAllRanges(); s.addRange(r);
+      });
+    });
+    /* Re-running the search is the page's one real control. The corpus is
+       already here; only the query changes, so the marks are computed rather
+       than authored — which is what the tool itself does. */
+    var sets = JSON.parse(document.getElementById('qdata').textContent);
+    var tbody = document.querySelector('#proof tbody');
+    function esc(t) { var d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+    function marked(text, query) {
+      return text.split(/(\w+)/).map(function (piece) {
+        var n = 0;
+        while (n < piece.length && n < query.length && piece[n].toLowerCase() === query[n].toLowerCase()) n++;
+        return n >= 4 ? '<mark>' + esc(piece.slice(0, n)) + '</mark>' + esc(piece.slice(n)) : esc(piece);
+      }).join('');
+    }
+    function paint(set) {
+      tbody.innerHTML = set.hits.map(function (h, i) {
+        var top = i === 0;
+        return '<tr class="head' + (top ? ' mark' : '') + '"><td>' + esc(h.id) + '</td><td>' + esc(h.date) +
+          '</td><td>' + esc(h.repo) + '</td><td>' + esc(h.branch) + '</td><td>' + esc(h.count) + '</td></tr>' +
+          h.remarks.map(function (r) {
+            return '<tr' + (top ? ' class="mark"' : '') + '><td><span class="who' + (r.me ? ' me' : '') + '">' +
+              esc(r.who) + '</span></td><td class="rem" colspan="4">' + marked(r.text, set.q) + '</td></tr>';
+          }).join('');
+      }).join('');
+    }
+    document.querySelectorAll('.q').forEach(function (b) {
+      b.addEventListener('click', function () {
+        if (b.classList.contains('on')) return;
+        document.querySelectorAll('.q').forEach(function (o) {
+          o.classList.remove('on'); o.setAttribute('aria-pressed', 'false');
+        });
+        b.classList.add('on'); b.setAttribute('aria-pressed', 'true');
+        var set = sets.filter(function (d) { return d.q === b.getAttribute('data-q'); })[0];
+        /* The motion chunk, if it loaded, prints the new result under the
+           carriage. Without it the sheet simply changes. */
+        (window.__reprint || function (f) { f(); })(function () { paint(set); });
+      });
+    });
+
+    document.querySelectorAll('.cov button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var open = b.getAttribute('aria-expanded') === 'true';
+        document.querySelectorAll('.cov button').forEach(function (o) {
+          o.setAttribute('aria-expanded', 'false');
+          document.getElementById(o.getAttribute('aria-controls')).hidden = true;
+        });
+        if (!open) { b.setAttribute('aria-expanded', 'true'); document.getElementById(b.getAttribute('aria-controls')).hidden = false; }
+      });
+    });
+  })();
+</script>
+
+<script>
+  /* Motion is a separate chunk that a reader who asked for less never fetches.
+     Everything here animates from a state the script itself arms, so the page
+     is fully printed when this file does not run. */
+  const $proof = document.getElementById('proof');
+  const $miss = document.getElementById('miss');
+  const $spine = document.getElementById('spine');
+  const $landed = document.querySelector('.landed');
+  const $pressed = document.getElementById('everytime');
+
+  const printed = () => {
+    $landed?.classList.add('on');
+    $pressed?.classList.remove('armed');
+    $spine?.classList.remove('armed');
+  };
+
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    printed();
+  } else {
+    try {
+      const [{ animate }, { onScroll }, { stagger }, { steps }] = await Promise.all([
+        import('animejs/animation'), import('animejs/events'),
+        import('animejs/utils'), import('animejs/easings/steps'),
+      ]);
+      const enter = 'end-=120 start';
+
+      /* The print head lays a sheet down line by line and retracts off the
+         bottom edge. steps() is the whole point: a carriage advances, it does
+         not glide. */
+      const $carriage = $proof.querySelector('.carriage');
+      window.__reprint = (repaint) => {
+        $landed?.classList.remove('on');
+        $carriage.style.height = '100%';
+        repaint();
+        animate($carriage, {
+          height: ['100%', '0%'], duration: 620, ease: steps(8),
+          onComplete: () => $landed?.classList.add('on'),
+        });
+      };
+
+      $proof.classList.add('armed');
+      animate($carriage, {
+        height: ['100%', '0%'], duration: 780, ease: steps(9),
+        autoplay: onScroll({ enter, repeat: false }),
+        onComplete: () => $landed?.classList.add('on'),
+      });
+
+      $miss.classList.add('armed');
+      animate($miss.querySelector('.carriage'), {
+        height: ['100%', '0%'], duration: 560, ease: steps(6),
+        autoplay: onScroll({ enter, repeat: false }),
+      });
+
+      /* The other machine on the page: a plotter, drawing the months up. */
+      $spine.classList.add('armed');
+      animate('.spine li b', {
+        scaleY: [0, 1], duration: 640, delay: stagger(60), ease: 'outExpo',
+        /* the bars start at zero height, so the section has to be what the
+           observer measures — a zero-height target never crosses a threshold */
+        autoplay: onScroll({ target: $spine, enter, repeat: false }),
+      });
+
+      /* The third rubber stamp, landing where the sentence needs it. */
+      $pressed.classList.add('armed');
+      animate($pressed, {
+        opacity: [0, .9], scale: [1.7, 1], rotate: ['-8deg', '-3.5deg'],
+        duration: 520, ease: 'outExpo',
+        autoplay: onScroll({ enter: 'end-=200 start', repeat: false }),
+      });
+    } catch {
+      printed();
+    }
+  }
+</script>
+</Base>
