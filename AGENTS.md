@@ -24,7 +24,7 @@ CI runs exactly these.
 ## Hard boundaries
 
 - **Two direct dependencies, and `scripts/deps-gate.sh` fails the build on a third.** It is an
-  exact-match allowlist, not a prefix match. Adding one is a design decision, not a convenience —
+  exact-match allowlist, not a prefix match. Adding one is a design decision, not a convenience.
   argue it in the PR before writing the import.
 - **Never write under a session store.** `~/.claude/projects` and `~/.codex/sessions` are read-only
   to this program, always. They are the user's only copy.
@@ -39,7 +39,7 @@ CI runs exactly these.
 
 - **Comments say why, not what.** Names and types carry the *what*. Comment the non-obvious
   constraint, the measurement behind a threshold, the invariant that isn't visible locally. This
-  codebase is dense with such comments and that is deliberate — match it, and delete any comment
+  codebase is dense with such comments and that is deliberate. Match it, and delete any comment
   that only restates the line under it.
 - No banner comments, no commented-out code, no TODO/FIXME left behind, no changelog or
   attribution in source. Git remembers.
@@ -54,7 +54,7 @@ A test that would pass against wrong behaviour is not coverage. Specifically:
   it returned.
 - A count is not a claim about *which* thing survived. Assert on identity where identity is what
   the requirement is about.
-- Any criterion worth asserting is worth a **negative control** — a case that must fail. Several
+- Any criterion worth asserting is worth a **negative control**, a case that must fail. Several
   tests here exist only to be the control for a neighbour; don't delete one for being redundant.
 - Don't let the setup pre-supply the answer the assertion is checking for.
 
@@ -66,7 +66,7 @@ A test that would pass against wrong behaviour is not coverage. Specifically:
 | `internal/scan` | the linear search, incl. hand-written arm64/amd64 fold assembly |
 | `internal/archive` | the tiered store, cursors, dedup, multi-agent groups |
 | `internal/strip` | per-agent transcript decoding; each agent registers a `Provider` |
-| `internal/render` | every output form — text, `--json`, `--format jsonl`, the `──` footer |
+| `internal/render` | every output form: text, `--json`, `--format jsonl`, the `──` footer |
 | `internal/mcp` | the MCP server, its five tools, and the client install recipes |
 | `tests/differential` | byte-for-byte comparison against the `perf-baseline` tag |
 | `scripts/demo` | the fixed corpus behind every example in the docs |

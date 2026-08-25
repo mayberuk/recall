@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Enforces a per-package coverage floor from a profile written by
 # `go test -coverprofile`. A package absent from the profile is not
-# automatically a pass or a failure — it is either untested or unmeasurable,
+# automatically a pass or a failure: it is either untested or unmeasurable,
 # and this prints which so that state stays visible instead of silent:
 #
 #   - no test files: go test never instrumented it; not this gate's business.
@@ -11,7 +11,7 @@
 # internal/fixtures gets an 80% floor instead of 90%. Its remaining uncovered
 # lines are seven t.Fatalf guards that only fire inside a re-exec'd subprocess
 # test binary, and a subprocess's coverage counters do not merge into the
-# profile this script reads — so 90% here is a number no honest run reaches.
+# profile this script reads, so 90% here is a number no honest run reaches.
 # Do not delete this exception quietly, and do not widen it to cover a package
 # that is merely undertested.
 #
@@ -26,9 +26,9 @@
 # code, and the acceptance runner in particular is validated by being run, not
 # by being covered. scripts/demo is the same case: it writes the corpus the
 # documented examples are taken from, and `scripts/demo.sh` failing to produce
-# them is a louder signal than a covered line. groupbench is measured the same way — `make bench-gate` fails when
+# them is a louder signal than a covered line. groupbench is measured the same way, and `make bench-gate` fails when
 # its comparison breaches, which is a stronger check than a covered line. Each
-# is still printed with its real percentage below — an exemption that hid the
+# is still printed with its real percentage below, because an exemption that hid the
 # number is how a harness package rots unnoticed. New packages are exempted by
 # name, one at a time, never by a path-prefix rule; that friction is
 # deliberate.

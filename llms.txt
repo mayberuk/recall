@@ -1,7 +1,7 @@
 # recall
 
-> A Go CLI that searches every past coding-agent session transcript on a machine — Claude Code and
-> Codex CLI — from any checkout of a repo, in about 30 milliseconds, with no index. It also serves
+> A Go CLI that searches every past coding-agent session transcript on a machine, both Claude Code and
+> Codex CLI, from any checkout of a repo, in about 30 milliseconds, with no index. It also serves
 > the same four questions to an agent over the Model Context Protocol. Every answer states what it
 > did *not* search, and its own token cost.
 
@@ -21,7 +21,7 @@ register it with a coding agent using `recall mcp install <client>`.
 - [Worked examples](https://raw.githubusercontent.com/mayberuk/recall/main/docs/examples.md): real output for all six commands, reproducible via scripts/demo.sh
 - [MCP integration](https://raw.githubusercontent.com/mayberuk/recall/main/docs/mcp.md): the five tools, every supported client's config path, what `install` writes
 - [For calling agents](https://raw.githubusercontent.com/mayberuk/recall/main/docs/agents.md): exit codes, `--json` and `--format jsonl`, the coverage contract, choosing a provider
-- [Changelog](https://raw.githubusercontent.com/mayberuk/recall/main/CHANGELOG.md): read before upgrading — v1.1 rebuilds the archive
+- [Changelog](https://raw.githubusercontent.com/mayberuk/recall/main/CHANGELOG.md): read before upgrading, because v1.1 rebuilds the archive
 - [Benchmarks](https://raw.githubusercontent.com/mayberuk/recall/main/bench/RESULTS.md): reproducible figures against a seeded corpus, never a private store
 
 ## Contributing

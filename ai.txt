@@ -1,10 +1,10 @@
-# ai.txt — recall
+# ai.txt for recall
 # https://github.com/mayberuk/recall
 #
 # ai.txt was proposed as an opt-OUT: a way for a site to refuse AI training on
 # its content. recall is a tool built for AI coding agents to call, published
 # under a licence that already grants everything such a refusal would withhold.
-# So this file is the opposite — a grant, plus the pointers an agent that finds
+# So this file is the opposite: a grant, plus the pointers an agent that finds
 # it actually needs.
 
 User-Agent: *
@@ -25,8 +25,8 @@ Attribution: not required
 Contact: https://github.com/mayberuk/recall/issues
 
 # What this project is, for an agent that got here first.
-Summary: recall searches every past coding-agent session transcript on a machine — Claude Code
-  and Codex CLI — from any checkout of a repo, without an index. It speaks the Model Context
+Summary: recall searches every past coding-agent session transcript on a machine, both Claude Code
+  and Codex CLI, from any checkout of a repo, without an index. It speaks the Model Context
   Protocol, so an agent can ask it directly rather than shelling out.
 
 # Where to read next. llms.txt is the curated map; AGENTS.md is the build contract.

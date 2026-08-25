@@ -27,12 +27,12 @@ Nothing yet.
   licence that already grants what a refusal would withhold, so its copy grants those uses
   explicitly and spends the rest of the file pointing an agent at what it needs.
 - **`scripts/demo.sh` and the fixed corpus behind it.** Builds recall, writes five plausible
-  sessions across three repos — one of them checked out twice — and runs every command the docs
+  sessions across three repos (one of them checked out twice) and runs every command the docs
   quote. Each example in the README and in `docs/examples.md` is now output a reader can
   reproduce, rather than output pasted from a store nobody else can see.
 - `recall` now serves an agent over the Model Context Protocol, so the questions it answers no
   longer have to be typed at a shell to be asked. `recall mcp serve` speaks MCP revision
-  `2026-07-28` over stdio and exposes five read-only tools — `recall_find`, `recall_guide`,
+  `2026-07-28` over stdio and exposes five read-only tools: `recall_find`, `recall_guide`,
   `recall_show`, `recall_turns` and `recall_when`. Each one runs the CLI verb it is named after,
   so a tool call and a command line cannot disagree about what the corpus holds or about what
   the coverage footer declares. `recall doctor` is deliberately not among them. Registering it
@@ -49,7 +49,7 @@ Nothing yet.
   **This drops Go 1.24**: the MCP SDK declares `go 1.25.0`, so the module's floor is now 1.25.
 - `recall` now reads more than one coding agent's session store. Codex CLI is registered
   alongside Claude Code: rollouts under `~/.codex/sessions` (or `$CODEX_HOME/sessions`) archive
-  to their own `agents/codex/` tree, built separately the first time anything asks for it — an
+  to their own `agents/codex/` tree, built separately the first time anything asks for it. An
   existing Claude Code archive is untouched and **requires no rebuild** to pick this up.
   `--provider` (or `RECALL_AGENT`) chooses which agent's transcripts a run reads: `auto` detects
   from the environment, an agent name pins one, `all` reads every registered agent whose session
@@ -82,7 +82,7 @@ Nothing yet.
   **Back the archive up before that first run.** There is no reader for the old format, so the
   bump rebuilds rather than migrates, and a rebuild can only re-derive turns from raw transcripts
   that still exist. Claude Code deletes raw sessions after 90 days. Anything the archive held
-  whose raw session is already gone does not survive the upgrade — silently, and with nothing to
+  whose raw session is already gone does not survive the upgrade, silently, and with nothing to
   recover it from, which is the opposite of the guarantee an archive exists to give. Copy
   `$RECALL_HOME`, or `~/.local/share/recall` if that is unset, first. Keeping a v2 reader so the
   bump migrates, or refusing a rebuild that would shrink the archive, is unresolved.
@@ -91,12 +91,12 @@ Nothing yet.
 
 First release.
 
-- `recall find` — locate the sessions that talked about something, ranked by concentration.
-- `recall turns` — the matching passages themselves, ranked across every session.
-- `recall show` — recover a conclusion with the turns around it, or a whole session's tail.
-- `recall when` — place a topic in time, chronologically.
-- `recall doctor` — archive integrity, coverage boundaries, format drift.
-- `recall guide` — which command answers which question, read first.
+- `recall find`: locate the sessions that talked about something, ranked by concentration.
+- `recall turns`: the matching passages themselves, ranked across every session.
+- `recall show`: recover a conclusion with the turns around it, or a whole session's tail.
+- `recall when`: place a topic in time, chronologically.
+- `recall doctor`: archive integrity, coverage boundaries, format drift.
+- `recall guide`: which command answers which question, read first.
 - Machine-wide by default within a repo (every checkout, clone, and worktree that shares a git
   remote); `--all` reaches every repo on the machine.
 - No index: the stripped conversation tier is small enough that a full linear scan is fast

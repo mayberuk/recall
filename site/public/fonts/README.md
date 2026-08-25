@@ -18,6 +18,6 @@ These are the latin subsets only. The full families cover far more, and the
 subset is what keeps each file near 35 KB.
 
 Big Shoulders Display's outlines are also the source of the wordmark in
-`docs/assets/` — those are glyph paths exported from this exact file at weight
+`docs/assets/`, which are glyph paths exported from this exact file at weight
 700, so a shipped SVG needs no font at render time and cannot fall back to
 something else.
