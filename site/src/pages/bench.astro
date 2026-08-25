@@ -1,0 +1,267 @@
+---
+import Base from '../layouts/Base.astro';
+import Masthead from '../components/Masthead.astro';
+import bench from '../data/bench.json';
+import { codeBlocks } from '../lib/shell.js';
+
+const dur = (ns) =>
+  ns >= 1e8 ? (ns / 1e6).toFixed(0) + ' ms'
+  : ns >= 1e6 ? (ns / 1e6).toFixed(1) + ' ms'
+  : ns >= 1e3 ? (ns / 1e3).toFixed(1) + ' µs'
+  : ns + ' ns';
+const size = (b) =>
+  b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB'
+  : b >= 1e3 ? (b / 1e3).toFixed(1) + ' KB'
+  : b + ' B';
+const cnt = (x) => x.toLocaleString('en-US');
+const ms = (v) => (v >= 100 ? v.toFixed(0) : v.toFixed(1)) + ' ms';
+
+/* A gate is a wall-clock ceiling the harness fails the build for crossing.
+   The number worth printing is not the measurement, it is the distance
+   between the measurement and the ceiling, because that is what has to
+   survive a year of changes. */
+const gates = bench.gates.map(g => ({
+  ...g,
+  factor: g.limit / g.measured,
+  // A sliver still has to be visible, or a row reads as a missing bar rather
+  // than a fast one.
+  pct: Math.max((g.measured / g.limit) * 100, 0.45),
+}));
+const tightest = gates.reduce((a, b) => (a.factor < b.factor ? a : b));
+const within = gates.filter(g => g.verdict === 'within').length;
+
+const at = (name, corpus) => bench.scenarios.find(s => s.name === name && s.corpus === corpus);
+const names = [...new Set(bench.scenarios.map(s => s.name))];
+const runs = names.map(name => ({ name, small: at(name, 'small'), medium: at(name, 'medium') }));
+const slowest = bench.scenarios.reduce((a, b) => (a.ms > b.ms ? a : b));
+
+const family = (n) => n.replace(/^Benchmark/, '').split('/')[0];
+const micro = [...new Set(bench.micro.map(m => family(m.name)))].map(f => ({
+  family: f,
+  rows: bench.micro
+    .filter(m => family(m.name) === f)
+    .map(m => ({ ...m, label: m.name.replace(/^Benchmark[^/]*\/?/, '') || m.corpus })),
+}));
+
+const headline = [
+  { n: `${within}/${gates.length}`, k: 'wall-clock gates inside budget', s: 'the harness fails the build otherwise' },
+  { n: `${Math.round(tightest.factor)}×`, k: 'the tightest margin of the seven', s: tightest.gate },
+  { n: ms(bench.gates.find(g => g.gate === 'find, all tiers').measured), k: 'to search every tier of a 50 MB store', s: 'conversation, tool commands and tool output' },
+  { n: ms(at('recall find bare', 'medium').ms), k: 'for the whole binary, start to exit', s: 'process spawn, search, render, exit' },
+];
+
+const reproduce = codeBlocks(`<pre><code>git clone https://github.com/mayberuk/recall &amp;&amp; cd recall
+make bench          # writes bench/RESULTS.md, the source of this page
+make bench-gate     # the wall-clock ceilings alone, which is the quick check
+</code></pre>`);
+
+const schema = [{
+  '@context': 'https://schema.org',
+  '@type': 'Dataset',
+  name: 'recall benchmark results',
+  description: 'Wall-clock gates, end-to-end scenario timings and Go micro benchmarks for recall, measured against a corpus generated from a fixed seed so any machine can reproduce them.',
+  url: 'https://recall.mayberuk.com/bench/',
+  license: 'https://opensource.org/licenses/MIT',
+  creator: { '@type': 'Person', name: 'mayberuk', url: 'https://github.com/mayberuk' },
+  dateModified: bench.measured,
+  measurementTechnique: 'Go testing benchmarks and end-to-end process timing against a seeded synthetic corpus',
+  variableMeasured: ['wall clock', 'output bytes', 'peak resident set size', 'nanoseconds per operation', 'bytes allocated per operation', 'allocations per operation'],
+  isAccessibleForFree: true,
+  distribution: [{
+    '@type': 'DataDownload',
+    encodingFormat: 'text/markdown',
+    contentUrl: 'https://recall.mayberuk.com/bench.md',
+  }],
+  about: { '@type': 'SoftwareApplication', name: 'recall' },
+}];
+---
+<Base title="recall benchmarks, every measured figure"
+      description="Every benchmark recall publishes: seven wall-clock gates and how far under them it runs, end-to-end timings for every command on a 5 MB and a 50 MB store, and the full Go micro benchmark table. Measured against a seeded corpus, so the numbers reproduce."
+      markdown="/bench.md" schema={schema}>
+
+<div class="feed l" aria-hidden="true"></div>
+<div class="feed r" aria-hidden="true"></div>
+<div class="grain" aria-hidden="true"></div>
+
+<Masthead current="bench" />
+
+<main id="main">
+<div class="hero benchHero">
+  <div class="wrap">
+    <p class="cap">Form B · measured {bench.measured.slice(0, 10)}</p>
+    <h1>Every number, and <em>where it came from.</em></h1>
+    <p class="lede">recall publishes its benchmarks in full, including the slow ones. Every figure
+    below runs against a corpus generated from a fixed seed rather than anybody’s session store, so
+    the same three commands reproduce this page on your machine.</p>
+    <dl class="figs benchFigs">{headline.map(f => (
+      <div><dt>{f.n}</dt><dd><b>{f.k}</b><span>{f.s}</span></dd></div>
+    ))}</dl>
+    <div class="benchRun" set:html={reproduce}></div>
+    <p class="data foot">Measured on {bench.hardware}.
+      The same figures as <a href="/bench.md">plain markdown</a>, or in the repository at
+      <a href="https://github.com/mayberuk/recall/blob/main/bench/RESULTS.md">bench/RESULTS.md</a>.</p>
+  </div>
+</div>
+
+<section>
+  <div class="wrap">
+    <h2>The <span class="hl-g">ceilings</span>, and the distance to them</h2>
+    <p>A gate is a wall-clock limit that fails the build when it is crossed. What matters is not
+    the measurement but the gap: the margin is what has to survive a year of changes, and the
+    tightest of the seven is <b>{Math.round(tightest.factor)}×</b>.</p>
+    <ol class="gates" id="gates">
+      {gates.map(g => (
+        <li>
+          <b>{g.gate}</b>
+          <span class="gateCorpus">{g.corpus} corpus</span>
+          <div class="gateTrack">
+            <i style={`--pct:${g.pct}%`}></i>
+            <span class="gateLimit">limit {ms(g.limit)}</span>
+          </div>
+          <span class="gateMeasured">{ms(g.measured)}</span>
+          <span class="gateFactor">{Math.round(g.factor)}× under</span>
+        </li>
+      ))}
+    </ol>
+    <p class="data foot">The bar is the measurement drawn against its own ceiling. Six of the seven
+      are too small to see at this scale, which is the point of drawing them.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>The binary, <span class="hl">end to end</span></h2>
+    <p>Process spawn to exit, for every command and every flag that changes the shape of the work.
+    Small is about 5 MB of transcript; medium is about 50 MB. The <b>output bytes</b> column is
+    what an agent pays to read the answer.</p>
+    <div class="sheet wideSheet">
+      <table>
+        <thead>
+          <tr>
+            <th>Command</th>
+            <th class="r">5 MB store</th>
+            <th class="r">50 MB store</th>
+            <th class="r">Output</th>
+            <th class="r">Peak RSS</th>
+          </tr>
+        </thead>
+        <tbody>
+          {runs.map(r => (
+            <tr class={r.medium.ms > 100 ? 'slow' : undefined}>
+              <td class="mono">{r.name}</td>
+              <td class="r mono">{ms(r.small.ms)}</td>
+              <td class="r mono strongCell">{ms(r.medium.ms)}</td>
+              <td class="r mono">{cnt(r.medium.out)} B</td>
+              <td class="r mono">{r.medium.rss.toFixed(0)} MB</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <p class="data foot">The one row that is not fast is <code>{slowest.name}</code> at
+      {ms(slowest.ms)}, and it is supposed to be: <code>doctor</code> verifies every frame of every
+      tier and re-reads the corpus to compare it against the archive. It is the only command with
+      no latency gate, because nobody runs it inside a loop.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Inside the <span class="hl">process</span></h2>
+    <p>The Go benchmarks, grouped by what they measure. Allocation counts are gated separately:
+    <code class="data">make bench-compare</code> fails on a regression against a committed baseline,
+    which is why the numbers in the last column are worth printing at all.</p>
+    {micro.map(g => (
+      <div class="microGroup">
+        <p class="cap microCap">{g.family}</p>
+        <div class="sheet wideSheet">
+          <table>
+            <thead>
+              <tr><th>Case</th><th class="r">Time</th><th class="r">Allocated</th><th class="r">Allocations</th></tr>
+            </thead>
+            <tbody>
+              {g.rows.map(m => (
+                <tr>
+                  <td class="mono">{m.label}</td>
+                  <td class="r mono strongCell">{dur(m.ns)}</td>
+                  <td class="r mono">{size(m.bytes)}</td>
+                  <td class="r mono">{cnt(m.allocs)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    ))}
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>What was <span class="hl-g">measured</span> against</h2>
+    <p>A session store generated from a seed, never a private one. The generator reproduces the
+    tier shape of a working store: conversation, tool commands and tool output hold 20.0% / 40.5% /
+    39.5% of the turns and 16.1% / 8.4% / 75.5% of the bytes, and every corpus lands within 2% of
+    each of those six shares.</p>
+    <div class="sheet wideSheet">
+      <table>
+        <thead>
+          <tr><th>Corpus</th><th class="r">Files</th><th class="r">On disk</th><th class="r">Turns</th>
+            <th class="r">Conversation</th><th class="r">Tool commands</th><th class="r">Tool output</th></tr>
+        </thead>
+        <tbody>
+          {bench.corpus.map(c => (
+            <tr>
+              <td class="mono">{c.corpus}</td>
+              <td class="r mono">{c.files}</td>
+              <td class="r mono strongCell">{c.onDisk}</td>
+              <td class="r mono">{c.turns}</td>
+              <td class="r mono">{c.conversation}</td>
+              <td class="r mono">{c.invocation}</td>
+              <td class="r mono">{c.result}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <div class="cov honest">
+      <p><b>The caveat this page will not bury.</b> The generator is denser than a real store:
+      about 72% of its on-disk bytes strip into text, where a real store measured at 1,402 MB of
+      JSONL yielded only 244 MB, roughly 17%. The tier ratio still holds, so comparing an all-tier
+      figure against its conversation-tier neighbour is sound. An absolute figure like a cold strip
+      time does not transfer directly, because 50 MB of this corpus holds several times the
+      searchable text that 50 MB of a real store does. The 30 ms on the front page is a different
+      measurement entirely: one developer machine, 143 real conversations, 1.52 GB.</p>
+    </div>
+  </div>
+</section>
+</main>
+
+<script is:inline>
+  /* The gate bars draw themselves once, when the section is reached. Inline
+     and dependency-free: this page has nothing else to animate, and a reader
+     who asked for no motion gets them already drawn, from the stylesheet. */
+  (function () {
+    var el = document.getElementById('gates');
+    if (!el) return;
+    if (!('IntersectionObserver' in window) ||
+        matchMedia('(prefers-reduced-motion: reduce)').matches) { el.classList.add('on'); return; }
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) { if (e.isIntersecting) { el.classList.add('on'); io.disconnect(); } });
+    }, { rootMargin: '0px 0px -18% 0px' });
+    io.observe(el);
+  })();
+</script>
+
+<footer>
+  <div class="wrap">
+    <dl>
+      <div><dt class="cap">Kept by</dt><dd>mayberuk</dd></div>
+      <div><dt class="cap">Licence</dt><dd>MIT</dd></div>
+      <div><dt class="cap">Read</dt><dd><a href="/docs/">Documentation</a></dd></div>
+      <div><dt class="cap">Source</dt><dd><a href="https://github.com/mayberuk/recall">github.com/mayberuk/recall</a></dd></div>
+    </dl>
+    <p class="data sheetNo">Sheet 3 of 3</p>
+  </div>
+</footer>
+</Base>

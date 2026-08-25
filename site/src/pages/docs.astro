@@ -1,16 +1,82 @@
 ---
 import Base from '../layouts/Base.astro';
 import Masthead from '../components/Masthead.astro';
-import { Content, getHeadings } from '../content/docs.md';
+import { Content, getHeadings, compiledContent } from '../content/docs.md';
+import { codeBlocks } from '../lib/shell.js';
+import bench from '../data/bench.json';
 
 // Only h2 goes in the contents rail. h3 is the individual commands, which the
 // reader reaches by scrolling one section, not by navigating to.
-const toc = getHeadings().filter(h => h.depth === 2);
-const base = import.meta.env.BASE_URL.replace(/\/+$/, '');
+const headings = getHeadings();
+const toc = headings.filter(h => h.depth === 2);
+
+// The markdown renders once, then every fenced block is rewritten into a
+// copyable, tokenised one, and every heading grows the anchor a person or an
+// agent needs in order to cite a paragraph rather than a page.
+const body = codeBlocks(await compiledContent()).replace(
+  /<(h[23]) id="([^"]+)">([\s\S]*?)<\/\1>/g,
+  (_, tag, id, text) =>
+    `<${tag} id="${id}">${text}<a class="anchor" href="#${id}" aria-label="Link to this section">#</a></${tag}>`
+);
+
+/* The FAQ block is derived from the Questions section of the page itself, so
+   the structured data and the visible answer can never disagree. Marking up
+   answers a reader cannot see is exactly the thing the guidelines forbid. */
+const questions = body.split('<h2 id="questions">')[1]?.split('<h2 ')[0] ?? '';
+const faq = [...questions.matchAll(
+  /<h3 id="[^"]*">([^<]*)<a class="anchor"[\s\S]*?<\/h3>\s*<p>([\s\S]*?)<\/p>/g
+)].map(m => ({
+  '@type': 'Question',
+  name: m[1].trim(),
+  acceptedAnswer: {
+    '@type': 'Answer',
+    text: m[2].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim(),
+  },
+}));
+if (faq.length !== 8) {
+  throw new Error(`the Questions section yielded ${faq.length} entries, not 8; the FAQ markup changed shape`);
+}
+
+const schema = [{
+  '@context': 'https://schema.org',
+  '@type': 'TechArticle',
+  headline: 'recall documentation',
+  name: 'recall documentation',
+  description: 'The complete reference for recall: every command, every flag, how a query is read, the coverage contract, exit codes, machine-readable output and the five MCP tools.',
+  url: 'https://recall.mayberuk.com/docs/',
+  inLanguage: 'en',
+  proficiencyLevel: 'Beginner',
+  dateModified: bench.docsUpdated || undefined,
+  author: { '@type': 'Person', name: 'mayberuk', url: 'https://github.com/mayberuk' },
+  license: 'https://opensource.org/licenses/MIT',
+  about: { '@type': 'SoftwareApplication', name: 'recall' },
+  hasPart: toc.map(h => ({
+    '@type': 'WebPageElement',
+    name: h.text,
+    url: `https://recall.mayberuk.com/docs/#${h.slug}`,
+  })),
+  encoding: {
+    '@type': 'MediaObject',
+    encodingFormat: 'text/markdown',
+    contentUrl: 'https://recall.mayberuk.com/docs.md',
+  },
+}, {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  url: 'https://recall.mayberuk.com/docs/#questions',
+  mainEntity: faq,
+}, {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'recall', item: 'https://recall.mayberuk.com/' },
+    { '@type': 'ListItem', position: 2, name: 'Documentation', item: 'https://recall.mayberuk.com/docs/' },
+  ],
+}];
 ---
-<Base title="recall documentation — every command, flag and MCP tool"
-      description="The full reference for recall: the six commands, how a query is read, the coverage contract, exit codes, machine-readable output, and the five MCP tools. Also served as plain markdown."
-      current="docs" markdown={`${base}/docs.md`}>
+<Base title="recall documentation, every command, flag and MCP tool"
+      description="The full reference for recall: the seven commands, every flag, how a query is read, the coverage contract, exit codes, machine-readable output, and the five MCP tools. Also served as plain markdown at /docs.md."
+      markdown="/docs.md" schema={schema}>
 
 <div class="feed l" aria-hidden="true"></div>
 <div class="feed r" aria-hidden="true"></div>
@@ -18,18 +84,16 @@ const base = import.meta.env.BASE_URL.replace(/\/+$/, '');
 
 <Masthead current="docs" />
 
-<div class="wrap docsWrap">
+<div class="wrap docsWrap" id="main">
   <nav class="toc" aria-label="Contents">
     <p class="cap tocCap">Contents</p>
     <ol>
       {toc.map(h => <li><a href={`#${h.slug}`}>{h.text}</a></li>)}
     </ol>
-    <p class="tocMd"><a href={`${base}/docs.md`}>Read as markdown</a></p>
+    <p class="tocMd"><a href="/docs.md">Read this page as markdown</a></p>
   </nav>
 
-  <article class="doc">
-    <Content />
-  </article>
+  <article class="doc" set:html={body}></article>
 </div>
 
 <footer>
@@ -37,16 +101,16 @@ const base = import.meta.env.BASE_URL.replace(/\/+$/, '');
     <dl>
       <div><dt class="cap">Kept by</dt><dd>mayberuk</dd></div>
       <div><dt class="cap">Licence</dt><dd>MIT</dd></div>
+      <div><dt class="cap">Measured</dt><dd><a href="/bench/">Benchmarks</a></dd></div>
       <div><dt class="cap">Source</dt><dd><a href="https://github.com/mayberuk/recall">github.com/mayberuk/recall</a></dd></div>
     </dl>
-    <p class="data" style="margin:0;color:var(--ink-2);font-size:.71rem">Sheet 2 of 2</p>
+    <p class="data sheetNo">Sheet 2 of 3</p>
   </div>
 </footer>
 
 <script is:inline>
   /* Mark the contents entry for whatever section is currently under the reader.
-     Inline so it works with no bundle, and skipped entirely where the reader
-     asked for no motion-driven chrome. */
+     Inline so it works with no bundle. */
   (function () {
     var links = [].slice.call(document.querySelectorAll('.toc ol a[href^="#"]'));
     if (!links.length || !('IntersectionObserver' in window)) return;

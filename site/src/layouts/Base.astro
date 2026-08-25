@@ -1,11 +1,45 @@
 ---
 import '../styles/global.css';
-const { title, description, markdown } = Astro.props;
+const { title, description, markdown, schema } = Astro.props;
 
 // Unfurlers fetch these from a crawler with no page context, so every URL has
 // to be absolute. Astro.site carries the origin; Astro.url the path.
 const canonical = new URL(Astro.url.pathname, Astro.site);
 const preview = new URL(`${import.meta.env.BASE_URL}/social-preview.png`.replace(/\/{2,}/g, '/'), Astro.site);
+
+// Structured data is the one thing a retrieval layer reads the same way a
+// search engine does: it answers "what is this, who made it, what does it
+// cost" without having to infer any of it from prose. Every page carries the
+// project identity; a page adds its own on top.
+const identity = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'recall',
+  alternateName: 'recall CLI',
+  applicationCategory: 'DeveloperApplication',
+  applicationSubCategory: 'Command Line Utility',
+  operatingSystem: 'macOS, Linux, Windows',
+  softwareVersion: '1.1.0',
+  url: 'https://recall.mayberuk.com',
+  downloadUrl: 'https://github.com/mayberuk/recall/releases',
+  codeRepository: 'https://github.com/mayberuk/recall',
+  programmingLanguage: 'Go',
+  license: 'https://opensource.org/licenses/MIT',
+  isAccessibleForFree: true,
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+  author: { '@type': 'Person', name: 'mayberuk', url: 'https://github.com/mayberuk' },
+  description:
+    'recall searches every past coding-agent session transcript stored on a machine, from Claude Code and Codex CLI, from any checkout of a repository, in about 30 milliseconds and with no index. It also serves the same questions to an agent over the Model Context Protocol. Every answer states what it did not search.',
+  featureList: [
+    'Fuzzy prefix search across every past coding-agent conversation',
+    'Resolves a repository by its git remote, so every clone and worktree is one history',
+    'No index to build or keep current; the whole store is read on every query',
+    'Model Context Protocol server with five read-only tools',
+    'Every answer prints its own coverage: what was searched, what was not, and the token cost',
+    'Runs entirely on the local machine with no account, no upload and no background process',
+  ],
+};
+const graph = [identity, ...(schema || [])];
 ---
 <html lang="en">
 <head>
@@ -14,8 +48,11 @@ const preview = new URL(`${import.meta.env.BASE_URL}/social-preview.png`.replace
 <title>{title}</title>
 <meta name="description" content={description} />
 <meta name="color-scheme" content="light dark" />
+<meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+<meta name="author" content="mayberuk" />
 <link rel="canonical" href={canonical} />
-{markdown && <link rel="alternate" type="text/markdown" href={markdown} />}
+{markdown && <link rel="alternate" type="text/markdown" href={markdown} title="This page as plain markdown" />}
+<link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt" />
 
 <!-- The card a link to this page unfurls into. A raster, not the SVG beside it:
      Slack, iMessage and Twitter will not render SVG in a preview. -->
@@ -26,7 +63,7 @@ const preview = new URL(`${import.meta.env.BASE_URL}/social-preview.png`.replace
 <meta property="og:image" content={preview} />
 <meta property="og:image:width" content="2560" />
 <meta property="og:image:height" content="1280" />
-<meta property="og:image:alt" content="recall — a line-printer ledger sheet stating what the tool searched and what it did not." />
+<meta property="og:image:alt" content="recall, a line-printer ledger sheet stating what the tool searched and what it did not." />
 <meta property="og:site_name" content="recall" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content={title} />
@@ -35,6 +72,7 @@ const preview = new URL(`${import.meta.env.BASE_URL}/social-preview.png`.replace
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="preload" as="font" type="font/woff2" href="/fonts/bigshoulders.woff2" crossorigin />
 <link rel="preload" as="font" type="font/woff2" href="/fonts/archivo.woff2" crossorigin />
+<script type="application/ld+json" set:html={JSON.stringify(graph)}></script>
 </head>
 <body>
 <!--
@@ -46,10 +84,26 @@ columns throughout, no cards, no gradients.
 STORY: a developer who lost an answer reads real output, learns the footer states what
 was not searched, and copies the install line.
 FIRST VIEWPORT: masthead rule; headline as three stamped declaratives; facts set small in
-a ruled register at right; install entry beneath, which stamps ENTERED IN LOG on copy.
+a ruled register at right; install entry beneath, and a query line that types itself.
 FORM: Deck Log, candidate 7 of my grounded list, seed f80dcd8b.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 -->
+<a class="skip" href="#main">Skip to content</a>
 <slot />
+<script is:inline>
+  /* One delegated handler for every copyable code block on every page. The
+     text copied is the source the block was built from, not the rendered
+     spans, because what lands on a clipboard has to be what a shell accepts. */
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('.cbCopy');
+    if (!b) return;
+    navigator.clipboard.writeText(b.getAttribute('data-code')).then(function () {
+      b.classList.add('ok');
+      b.textContent = 'Copied';
+      clearTimeout(b._t);
+      b._t = setTimeout(function () { b.classList.remove('ok'); b.textContent = 'Copy'; }, 1800);
+    });
+  });
+</script>
 </body>
 </html>

@@ -17,14 +17,15 @@ register it with a coding agent using `recall mcp install <client>`.
 
 ## Docs
 
+- [Everything, in one file](https://recall.mayberuk.com/llms-full.txt): this map, the whole documentation page and the full benchmark results, concatenated. Fetch this one if you only fetch one
 - [Site](https://recall.mayberuk.com): the project's home page
 - [Documentation](https://recall.mayberuk.com/docs.md): every command, flag, exit code and MCP tool, as markdown
+- [Benchmarks](https://recall.mayberuk.com/bench.md): every published figure, as markdown, measured against a corpus generated from a fixed seed
 - [README](https://raw.githubusercontent.com/mayberuk/recall/main/README.md): what it is, install, and the headline example
 - [Worked examples](https://raw.githubusercontent.com/mayberuk/recall/main/docs/examples.md): real output for all six commands, reproducible via scripts/demo.sh
 - [MCP integration](https://raw.githubusercontent.com/mayberuk/recall/main/docs/mcp.md): the five tools, every supported client's config path, what `install` writes
 - [For calling agents](https://raw.githubusercontent.com/mayberuk/recall/main/docs/agents.md): exit codes, `--json` and `--format jsonl`, the coverage contract, choosing a provider
 - [Changelog](https://raw.githubusercontent.com/mayberuk/recall/main/CHANGELOG.md): read before upgrading, because v1.1 rebuilds the archive
-- [Benchmarks](https://raw.githubusercontent.com/mayberuk/recall/main/bench/RESULTS.md): reproducible figures against a seeded corpus, never a private store
 
 ## Contributing
 

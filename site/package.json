@@ -12,6 +12,8 @@
     "astro": "^5.14.1"
   },
   "dependencies": {
-    "animejs": "^4.5.0"
+    "@astrojs/sitemap": "^3.7.3",
+    "animejs": "^4.5.0",
+    "simple-icons": "^16.28.0"
   }
 }

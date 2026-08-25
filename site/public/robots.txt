@@ -1,0 +1,55 @@
+# recall is a tool built for AI agents to call. Everything here is MIT licensed
+# and meant to be read, quoted and acted on, by a person or by a crawler. There
+# is nothing to withhold, so nothing is withheld.
+
+User-agent: *
+Allow: /
+
+# Named explicitly, because several of these treat an unnamed allow as
+# ambiguous and a few of their operators publish separate opt-out lists.
+User-agent: GPTBot
+Allow: /
+User-agent: OAI-SearchBot
+Allow: /
+User-agent: ChatGPT-User
+Allow: /
+User-agent: ClaudeBot
+Allow: /
+User-agent: Claude-User
+Allow: /
+User-agent: Claude-SearchBot
+Allow: /
+User-agent: anthropic-ai
+Allow: /
+User-agent: PerplexityBot
+Allow: /
+User-agent: Perplexity-User
+Allow: /
+User-agent: Google-Extended
+Allow: /
+User-agent: Applebot-Extended
+Allow: /
+User-agent: CCBot
+Allow: /
+User-agent: cohere-ai
+Allow: /
+User-agent: Bytespider
+Allow: /
+User-agent: Amazonbot
+Allow: /
+User-agent: meta-externalagent
+Allow: /
+User-agent: DuckAssistBot
+Allow: /
+User-agent: MistralAI-User
+Allow: /
+User-agent: YouBot
+Allow: /
+
+Sitemap: https://recall.mayberuk.com/sitemap-index.xml
+
+# Plain-text twins of every page, for a reader that would rather not parse HTML.
+# /llms.txt      the curated map
+# /llms-full.txt every page on this site, concatenated, in one fetch
+# /docs.md       the documentation page, as markdown
+# /bench.md      the benchmark results, as markdown

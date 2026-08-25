@@ -254,7 +254,7 @@ Your agent can search its own history without you shelling out.
 recall mcp install <client>
 ```
 
-Supported clients: `claude-code`, `codex`, `gemini`, `copilot`, `cursor`, `opencode`.
+Supported clients: `claude-code`, `codex`, `gemini`, `copilot`, `cursor`, `opencode`, `windsurf`.
 
 `recall mcp config <client>` prints the same entry and **writes nothing**, if you would rather
 paste it yourself. `--dry-run` prints every path an install would create or modify and writes none
@@ -325,6 +325,62 @@ because recall did both already and letting fzf re-sort would discard concentrat
 | `RECALL_AGENT` | default provider, overridden by `--provider` |
 | `NO_COLOR` | set and non-empty disables colour, as does `TERM=dumb` |
 | `RECALL_NO_UPDATE_CHECK` | set and non-empty disables the version check and its notice |
+
+## Questions
+
+### What is recall?
+
+recall is a Go command line tool that searches every past coding-agent session transcript stored on
+your machine, from Claude Code and Codex CLI, and returns the sessions or the passages that talked
+about a topic. It is also a Model Context Protocol server, so a coding agent can search that
+history itself, mid-task, without you pasting anything.
+
+### How fast is recall?
+
+A typical search takes about 30 milliseconds against a store of 143 real conversations totalling
+1.52 GB, measured start to exit. Including tool output takes about 93 ms, and a search that matches
+nothing takes about 113 ms, because every byte has to be read before it can be ruled out. The
+reproducible figures, against a corpus generated from a fixed seed, are on the
+[benchmarks page](https://recall.mayberuk.com/bench/).
+
+### Does recall need an index?
+
+No. There is no index to build, rebuild or keep current. recall reads the whole store on every
+query, which is why a conversation from ten minutes ago is findable immediately, why there is
+nothing to go stale, and why nothing runs in the background.
+
+### Does recall send my conversations anywhere?
+
+No. Every search runs on your machine against your own files. There is no account, no upload, no
+telemetry and no background process. The one network call in the whole binary is `recall update`,
+which asks the GitHub releases API which version is current, and only when you type it. Setting
+`RECALL_NO_UPDATE_CHECK` to any non-empty value turns that off too, after which recall opens no
+socket at all.
+
+### Which coding agents does recall work with?
+
+It registers itself as an MCP server with Claude Code, Codex CLI, Gemini CLI, GitHub Copilot CLI,
+Cursor, OpenCode and Windsurf, using `recall mcp install <client>`. The transcripts it reads are
+written by Claude Code and Codex CLI; other clients call it as a server rather than being read from.
+
+### What does recall search by default?
+
+Conversation turns only, meaning what you and your agent said to each other. Tool output is most of
+a session store and is searched only with `--results`; tool command lines only with `--tools`.
+Every answer ends with a footer stating exactly which of those narrowings were applied, so a
+narrowing you did not ask for cannot happen quietly.
+
+### Does recall work from any checkout of a repository?
+
+Yes, and it is the reason the tool exists. Coding agents file transcripts by checkout path, so one
+repository sprawls across clones and worktrees and a path-scoped search silently misses. recall
+resolves a repository by its git remote instead, so every checkout of it is one history, including
+branches you have since deleted.
+
+### What does recall cost?
+
+Nothing. It is free and open source under the MIT licence, with no paid tier and nothing to sign
+up for.
 
 ## Reading further
 
