@@ -1,3 +1,7 @@
 node_modules/
 dist/
 .astro/
+
+# Generated at build time from the repository root by scripts/sync-public.mjs.
+public/llms.txt
+public/ai.txt

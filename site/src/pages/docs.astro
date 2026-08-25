@@ -1,0 +1,69 @@
+---
+import Base from '../layouts/Base.astro';
+import Masthead from '../components/Masthead.astro';
+import { Content, getHeadings } from '../content/docs.md';
+
+// Only h2 goes in the contents rail. h3 is the individual commands, which the
+// reader reaches by scrolling one section, not by navigating to.
+const toc = getHeadings().filter(h => h.depth === 2);
+const base = import.meta.env.BASE_URL.replace(/\/+$/, '');
+---
+<Base title="recall documentation — every command, flag and MCP tool"
+      description="The full reference for recall: the six commands, how a query is read, the coverage contract, exit codes, machine-readable output, and the five MCP tools. Also served as plain markdown."
+      current="docs" markdown={`${base}/docs.md`}>
+
+<div class="feed l" aria-hidden="true"></div>
+<div class="feed r" aria-hidden="true"></div>
+<div class="grain" aria-hidden="true"></div>
+
+<Masthead current="docs" />
+
+<div class="wrap docsWrap">
+  <nav class="toc" aria-label="Contents">
+    <p class="cap tocCap">Contents</p>
+    <ol>
+      {toc.map(h => <li><a href={`#${h.slug}`}>{h.text}</a></li>)}
+    </ol>
+    <p class="tocMd"><a href={`${base}/docs.md`}>Read as markdown</a></p>
+  </nav>
+
+  <article class="doc">
+    <Content />
+  </article>
+</div>
+
+<footer>
+  <div class="wrap">
+    <dl>
+      <div><dt class="cap">Kept by</dt><dd>mayberuk</dd></div>
+      <div><dt class="cap">Licence</dt><dd>MIT</dd></div>
+      <div><dt class="cap">Source</dt><dd><a href="https://github.com/mayberuk/recall">github.com/mayberuk/recall</a></dd></div>
+    </dl>
+    <p class="data" style="margin:0;color:var(--ink-2);font-size:.71rem">Sheet 2 of 2</p>
+  </div>
+</footer>
+
+<script is:inline>
+  /* Mark the contents entry for whatever section is currently under the reader.
+     Inline so it works with no bundle, and skipped entirely where the reader
+     asked for no motion-driven chrome. */
+  (function () {
+    var links = [].slice.call(document.querySelectorAll('.toc ol a[href^="#"]'));
+    if (!links.length || !('IntersectionObserver' in window)) return;
+    var byId = {};
+    links.forEach(function (a) { byId[a.getAttribute('href').slice(1)] = a; });
+    var seen = {};
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) { seen[e.target.id] = e.isIntersecting; });
+      var first = null;
+      Object.keys(byId).forEach(function (id) { if (!first && seen[id]) first = id; });
+      links.forEach(function (a) { a.removeAttribute('data-here'); });
+      if (first) byId[first].setAttribute('data-here', '');
+    }, { rootMargin: '-72px 0px -70% 0px' });
+    Object.keys(byId).forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) io.observe(el);
+    });
+  })();
+</script>
+</Base>

@@ -280,3 +280,75 @@ section.bleed{padding-block:0}
 .miss pre{margin:0;font:inherit;white-space:pre-wrap}
 .spine.armed li b{transform:scaleY(0)}
 .pressed.armed{opacity:0}
+
+/* ── documentation: the same stock, read rather than sold ──────────────
+   A reference sheet, not a scroll narrative. Two columns where there is
+   room for two: a contents rail set as form furniture, and one measured
+   column of prose. Every rule and ink is the one the deck log already
+   uses; nothing here introduces a fifth. */
+
+.nav{display:flex;gap:1.15rem;flex-wrap:wrap}
+.nav a{font-family:var(--body);font-size:.645rem;font-weight:600;letter-spacing:.19em;text-transform:uppercase;
+  color:var(--ink-2);text-decoration:none;padding-bottom:.24rem;border-bottom:2px solid transparent;
+  transition:color var(--nudge),border-color var(--nudge)}
+.nav a:hover{color:var(--ink);border-bottom-color:var(--rule-faint)}
+.nav a[aria-current=page]{color:var(--ink);border-bottom-color:var(--stamp)}
+.mastEnd{display:flex;align-items:center;gap:var(--gut);flex-wrap:wrap}
+.brand{text-decoration:none;color:inherit}
+
+.docsWrap{display:grid;grid-template-columns:minmax(0,14rem) minmax(0,1fr);
+  gap:clamp(1.6rem,4vw,3.4rem);align-items:start;padding-block:clamp(1.8rem,4vw,3rem) 0}
+
+.toc{position:sticky;top:1.4rem;border-top:2px solid var(--rule)}
+.tocCap{padding:.5rem 0 .45rem;border-bottom:1px solid var(--rule-hair)}
+.toc ol{list-style:none;margin:0;padding:0;counter-reset:toc}
+.toc li{counter-increment:toc;border-bottom:1px solid var(--rule-hair)}
+.toc ol a{display:grid;grid-template-columns:1.9rem 1fr;gap:.3rem;padding:.4rem .3rem .4rem 0;
+  font-size:.83rem;line-height:1.35;text-decoration:none;color:var(--ink-2);
+  transition:background-color var(--nudge),color var(--nudge)}
+.toc ol a::before{content:counter(toc,decimal-leading-zero);font-family:var(--data);font-size:.66rem;color:var(--ink-2)}
+.toc ol a:hover{background:var(--rule-hair);color:var(--ink)}
+.toc ol a[data-here]{color:var(--ink);background:var(--stamp-wash)}
+.toc ol a[data-here]::before{color:var(--stamp)}
+.tocMd{margin:.85rem 0 0;font-family:var(--data);font-size:.7rem;color:var(--ink-2)}
+
+.doc{max-width:64ch;padding-bottom:clamp(2.4rem,6vw,4rem)}
+.doc > h1{font-size:clamp(2.6rem,7vw,4.2rem);line-height:.9;letter-spacing:-.035em;max-width:none;margin:0 0 1.1rem}
+.doc h2{font-family:var(--display);font-weight:700;font-size:clamp(1.8rem,4vw,2.6rem);line-height:.98;
+  letter-spacing:-.03em;margin:2.9rem 0 .9rem;padding-top:1.15rem;border-top:2px solid var(--rule);scroll-margin-top:1.4rem}
+.doc h3{font-family:var(--data);font-weight:700;font-size:.95rem;letter-spacing:-.01em;
+  margin:1.9rem 0 .55rem;color:var(--ledger-ink);scroll-margin-top:1.4rem}
+.doc p{margin:0 0 1rem}
+.doc > p:first-of-type{font-size:clamp(1.04rem,.5vw + .95rem,1.2rem);color:var(--ink-2);line-height:1.5}
+.doc strong{font-weight:700}
+.doc a{color:inherit}
+.doc ul{margin:0 0 1.1rem;padding-left:1.15rem}
+.doc li{margin-bottom:.3rem}
+.doc li::marker{color:var(--rule-faint)}
+.doc code{font-family:var(--data);font-size:.86em;background:var(--rule-hair);padding:.1em .32em}
+.doc pre{font-family:var(--data);font-size:.8rem;line-height:1.55;background:var(--stock-2);
+  border:1px solid var(--rule);border-left-width:3px;padding:.85rem 1rem;overflow-x:auto;margin:0 0 1.2rem}
+.doc pre code{background:none;padding:0;font-size:inherit}
+
+/* Tables are the ledger's own device: a printed header bar, banded rows,
+   and a screen inside the band because a printed band has one. */
+.doc table{width:100%;border-collapse:collapse;margin:0 0 1.3rem;font-size:.88rem}
+.doc thead th{background:var(--field-bg);color:var(--field-ink);text-align:left;
+  font-family:var(--body);font-size:.645rem;font-weight:600;letter-spacing:.19em;text-transform:uppercase;
+  padding:.42rem .6rem}
+.doc tbody tr{border-bottom:1px solid var(--rule-hair)}
+.doc tbody tr:nth-child(odd){background-image:linear-gradient(var(--ledger-band),var(--ledger-band)),
+  repeating-linear-gradient(180deg,var(--ledger-screen) 0 1px,transparent 1px 5px)}
+.doc td{padding:.44rem .6rem;vertical-align:top}
+.doc td:first-child{white-space:nowrap}
+.doc td code{background:none;padding:0;color:var(--ledger-ink)}
+
+@media (max-width:60rem){
+  .docsWrap{grid-template-columns:minmax(0,1fr)}
+  .toc{position:static;margin-bottom:1.6rem}
+  .doc{max-width:none}
+  .doc td:first-child{white-space:normal}
+}
+@media (max-width:34rem){
+  .mastEnd{gap:.6rem} .nav{gap:.85rem} .formno{display:none}
+}

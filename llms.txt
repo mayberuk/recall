@@ -17,6 +17,7 @@ register it with a coding agent using `recall mcp install <client>`.
 ## Docs
 
 - [Site](https://recall.mayberuk.com): the project's home page
+- [Documentation](https://recall.mayberuk.com/docs.md): every command, flag, exit code and MCP tool, as markdown
 - [README](https://raw.githubusercontent.com/mayberuk/recall/main/README.md): what it is, install, and the headline example
 - [Worked examples](https://raw.githubusercontent.com/mayberuk/recall/main/docs/examples.md): real output for all six commands, reproducible via scripts/demo.sh
 - [MCP integration](https://raw.githubusercontent.com/mayberuk/recall/main/docs/mcp.md): the five tools, every supported client's config path, what `install` writes

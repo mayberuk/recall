@@ -1,0 +1,41 @@
+---
+// The form header, filled in. Shared by both pages so the nav and the version
+// line cannot drift apart; `current` is the only thing that differs.
+const { current } = Astro.props;
+const base = import.meta.env.BASE_URL.replace(/\/+$/, '');
+const nav = [
+  { href: `${base}/`, label: 'Overview', key: 'index' },
+  { href: `${base}/docs`, label: 'Documentation', key: 'docs' },
+  { href: 'https://github.com/mayberuk/recall', label: 'Source', key: 'source' },
+];
+---
+<header class="mast">
+  <div class="wrap">
+    <a class="brand" href={`${base}/`} aria-label="recall, home">
+      <!-- The Excluded Register: a ruled ledger cell, sprocket holes down the
+           left rail, three rows found and one row broken. The break is geometry,
+           not a hue, so it survives one ink and 16px. -->
+      <svg viewBox="0 0 40 40" role="img" aria-label="recall" shape-rendering="crispEdges">
+        <rect x=".75" y=".75" width="38.5" height="38.5" fill="none" stroke="var(--rule)" stroke-width="1.5"/>
+        <line x1="9" y1="0" x2="9" y2="40" stroke="var(--rule)" stroke-width="1"/>
+        <circle cx="4.5" cy="6" r="2" fill="var(--hole)"/>
+        <circle cx="4.5" cy="20" r="2" fill="var(--hole)"/>
+        <circle cx="4.5" cy="34" r="2" fill="var(--hole)"/>
+        <rect x="13" y="5" width="22" height="5" fill="var(--ledger)"/>
+        <rect x="13" y="14" width="22" height="5" fill="var(--ledger)"/>
+        <rect x="13" y="23" width="8.4" height="5" fill="var(--carbon)"/>
+        <rect x="26.6" y="23" width="8.4" height="5" fill="var(--carbon)"/>
+        <rect x="13" y="31" width="22" height="5" fill="var(--ledger)"/>
+      </svg>
+      <b>recall</b>
+    </a>
+    <div class="mastEnd">
+      <nav class="nav" aria-label="Primary">
+        {nav.map(n => (
+          <a href={n.href} aria-current={n.key === current ? 'page' : undefined}>{n.label}</a>
+        ))}
+      </nav>
+      <p class="formno">v1.1.0 · MIT</p>
+    </div>
+  </div>
+</header>
