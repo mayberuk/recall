@@ -2,7 +2,7 @@
 set -euo pipefail
 
 here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-repo="${here}"
+repo="$(cd -- "${here}/.." && pwd)"
 bin_dir="${HOME}/.local/bin"
 target="${bin_dir}/recall"
 
