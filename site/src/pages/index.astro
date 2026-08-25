@@ -1,5 +1,6 @@
 ---
 import Base from '../layouts/Base.astro';
+import Masthead from '../components/Masthead.astro';
 
 /* Three searches over the same two-conversation corpus. Ranked best-first, so
    the stamp always lands on the top entry. Marks are computed in the browser
@@ -66,29 +67,7 @@ const coverage = [
 <div class="feed r" aria-hidden="true"></div>
 <div class="grain" aria-hidden="true"></div>
 
-<header class="mast">
-  <div class="wrap">
-    <div class="brand">
-      <!-- The Excluded Register: a ruled ledger cell, sprocket holes down the
-           left rail, three rows found and one row broken. The break is geometry,
-           not a hue, so it survives one ink and 16px. -->
-      <svg viewBox="0 0 40 40" role="img" aria-label="recall" shape-rendering="crispEdges">
-        <rect x=".75" y=".75" width="38.5" height="38.5" fill="none" stroke="var(--rule)" stroke-width="1.5"/>
-        <line x1="9" y1="0" x2="9" y2="40" stroke="var(--rule)" stroke-width="1"/>
-        <circle cx="4.5" cy="6" r="2" fill="var(--hole)"/>
-        <circle cx="4.5" cy="20" r="2" fill="var(--hole)"/>
-        <circle cx="4.5" cy="34" r="2" fill="var(--hole)"/>
-        <rect x="13" y="5" width="22" height="5" fill="var(--ledger)"/>
-        <rect x="13" y="14" width="22" height="5" fill="var(--ledger)"/>
-        <rect x="13" y="23" width="8.4" height="5" fill="var(--carbon)"/>
-        <rect x="26.6" y="23" width="8.4" height="5" fill="var(--carbon)"/>
-        <rect x="13" y="31" width="22" height="5" fill="var(--ledger)"/>
-      </svg>
-      <b>recall</b>
-    </div>
-    <p class="formno">v1.1.0 · MIT · <a href="https://github.com/mayberuk/recall">github.com/mayberuk/recall</a></p>
-  </div>
-</header>
+<Masthead current="index" />
 
 <div class="hero">
   <div class="wrap">

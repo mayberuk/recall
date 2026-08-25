@@ -1,6 +1,6 @@
 ---
 import '../styles/global.css';
-const { title, description } = Astro.props;
+const { title, description, markdown } = Astro.props;
 
 // Unfurlers fetch these from a crawler with no page context, so every URL has
 // to be absolute. Astro.site carries the origin; Astro.url the path.
@@ -15,6 +15,7 @@ const preview = new URL(`${import.meta.env.BASE_URL}/social-preview.png`.replace
 <meta name="description" content={description} />
 <meta name="color-scheme" content="light dark" />
 <link rel="canonical" href={canonical} />
+{markdown && <link rel="alternate" type="text/markdown" href={markdown} />}
 
 <!-- The card a link to this page unfurls into. A raster, not the SVG beside it:
      Slack, iMessage and Twitter will not render SVG in a preview. -->

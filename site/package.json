@@ -3,9 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "astro dev",
-    "build": "astro build",
-    "preview": "astro preview"
+    "dev": "npm run sync && astro dev",
+    "build": "npm run sync && astro build",
+    "preview": "astro preview",
+    "sync": "node scripts/sync-public.mjs"
   },
   "devDependencies": {
     "astro": "^5.14.1"
