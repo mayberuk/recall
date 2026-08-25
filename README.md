@@ -266,6 +266,7 @@ Codex archives to its own tree, so adding it never rebuilds an existing Claude C
 
 | | |
 |---|---|
+| [recall.mayberuk.com](https://recall.mayberuk.com) | the site: what it does, and the numbers behind it |
 | [docs/mcp.md](docs/mcp.md) | MCP tools, every client's config path, what `install` writes |
 | [docs/examples.md](docs/examples.md) | worked examples for all six commands |
 | [docs/agents.md](docs/agents.md) | exit codes, `--json`, the coverage contract — written for agents |
