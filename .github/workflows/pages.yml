@@ -15,6 +15,11 @@ on:
       - 'site/**'
       - 'docs/assets/**'
       - '.github/workflows/pages.yml'
+      # The site is built from these too: sync-public.mjs copies the first two
+      # to the domain root and parses the third into the benchmark page.
+      - 'llms.txt'
+      - 'ai.txt'
+      - 'bench/RESULTS.md'
   workflow_dispatch:
 
 permissions:

@@ -1,37 +1,63 @@
 ---
 import Base from '../layouts/Base.astro';
 import Masthead from '../components/Masthead.astro';
+import Agents from '../components/Agents.astro';
+import bench from '../data/bench.json';
 
-/* Three searches over the same two-conversation corpus. Ranked best-first, so
-   the stamp always lands on the top entry. Marks are computed in the browser
-   from the longest prefix the query and the word share — the visitor can see
-   exactly how much of a word matched, which is the whole fuzzy story. */
-const queries = [
-  { q:'idempotency', hits:[
-    { id:'6e2b8d15', date:'2026-06-03', repo:'github.com/acme/payments', branch:'hotfix/dedupe', count:'4 matches', remarks:[
-      { who:'you', me:true, text:'Duplicate charges again. Two merchants hit the same idempotency key and one saw the other\u2019s receipt\u2026' },
-      { who:'agent', me:false, text:'Scope the idempotency key per merchant, never globally. The key is a string the client chooses, so\u2026' } ] },
-    { id:'3b8a2c94', date:'2026-07-21', repo:'github.com/acme/payments', branch:'main', count:'1 match', remarks:[
-      { who:'agent', me:false, text:'\u2026a retry there needs the idempotency key to be safe, or it must not be retried at all.' } ] },
-  ]},
-  { q:'retries', hits:[
-    { id:'c1f47a60', date:'2026-04-18', repo:'github.com/acme/payments', branch:'spike/retry-budget', count:'7 matches', remarks:[
-      { who:'you', me:true, text:'How many retries before we give up? The queue is retrying forever and nothing pages anyone.' },
-      { who:'agent', me:false, text:'Cap it at three attempts, then dead-letter. A retry that never stops is an outage that never gets noticed.' } ] },
-    { id:'3b8a2c94', date:'2026-07-21', repo:'github.com/acme/payments', branch:'main', count:'2 matches', remarks:[
-      { who:'agent', me:false, text:'\u2026a retry there needs the idempotency key to be safe, or it must not be retried at all.' } ] },
-  ]},
-  { q:'merchant', hits:[
-    { id:'6e2b8d15', date:'2026-06-03', repo:'github.com/acme/payments', branch:'hotfix/dedupe', count:'5 matches', remarks:[
-      { who:'you', me:true, text:'Duplicate charges again. Two merchants hit the same idempotency key and one saw the other\u2019s receipt\u2026' },
-      { who:'agent', me:false, text:'Scope the idempotency key per merchant, never globally. The key is a string the client chooses, so\u2026' } ] },
-    { id:'3b8a2c94', date:'2026-07-21', repo:'github.com/acme/payments', branch:'main', count:'1 match', remarks:[
-      { who:'agent', me:false, text:'Per merchant, then \u2014 the key belongs to whoever the charge belongs to, never to the platform.' } ] },
-  ]},
+/* Three runs over the same corpus the worked examples use, so what types
+   itself here is the shape the binary actually prints. Each act is a command,
+   the completion offered part-way through typing it, and what came back.
+   Marks are computed from the longest prefix the query and the word share, in
+   the browser and on the server by the same rule, because that is the whole
+   fuzzy story and an authored highlight would be a claim rather than a demo. */
+const acts = [
+  {
+    cmd: 'recall find idempotency',
+    stem: 'recall find idem',
+    q: 'idempotency',
+    took: '2 sessions · 5 hits · 6 ms',
+    cols: ['Session', 'Date', 'Project', 'Branch', 'Found'],
+    note: 'The top answer is in a second checkout, on a branch deleted locally months ago.',
+    hits: [
+      { id:'6e2b8d15', date:'2026-06-03', repo:'github.com/acme/payments', branch:'hotfix/dedupe', count:'4 hits in 3 turns', remarks:[
+        { who:'human', me:true, text:'Duplicate charges again. Two merchants hit the same idempotency key and one of them saw the other’s receipt. How do we scope these keys?' },
+        { who:'assistant', me:false, text:'Scope the idempotency key per merchant, never globally. The key is a string the client chooses, so…' } ] },
+      { id:'3b8a2c94', date:'2026-07-21', repo:'github.com/acme/payments', branch:'main', count:'1 hit of 4 turns', remarks:[
+        { who:'assistant', me:false, text:'…a retry there needs the idempotency key to be safe, and without one it must not be retried at all.' } ] },
+    ],
+  },
+  {
+    cmd: 'recall find idempotency --all',
+    q: 'idempotency',
+    took: '3 sessions · 9 hits · 8 ms',
+    cols: ['Session', 'Date', 'Project', 'Branch', 'Found'],
+    note: 'One flag widens the same query from this repo to every repo on the machine.',
+    hits: [
+      { id:'a47f0c31', date:'2026-02-09', repo:'github.com/acme/infra', branch:'main', count:'4 hits in 2 turns', remarks:[
+        { who:'human', me:true, text:'The queue worker replays on redeploy. Does the idempotency layer cover that, or is it only the HTTP edge?' },
+        { who:'assistant', me:false, text:'Only the edge today. The worker dedupes on delivery tag, which resets when the broker does, so…' } ] },
+      { id:'6e2b8d15', date:'2026-06-03', repo:'github.com/acme/payments', branch:'hotfix/dedupe', count:'4 hits in 3 turns', remarks:[
+        { who:'assistant', me:false, text:'Scope the idempotency key per merchant, never globally. The key is a string the client chooses, so…' } ] },
+    ],
+  },
+  {
+    cmd: 'recall turns "why scope it per merchant"',
+    stem: 'recall turns "why scope it per merch',
+    q: 'merchant',
+    took: '2 passages · 0.6 ms · ~180 tokens',
+    cols: ['Passage', 'Date', 'Project', 'Branch', 'Rank'],
+    note: 'turns skips the session and hands over the passage, ranked across all of them at once.',
+    hits: [
+      { id:'6e2b8d15:0001', date:'2026-06-03', repo:'github.com/acme/payments', branch:'hotfix/dedupe', count:'1st', remarks:[
+        { who:'assistant', me:false, text:'…a global namespace means any two clients picking order-1 collide, and the collision does not fail loudly: it returns the first caller’s stored response to the second. Make the storage key the pair (merchant_id, idempotency_key).' } ] },
+      { id:'3b8a2c94:0004', date:'2026-07-21', repo:'github.com/acme/payments', branch:'main', count:'2nd', remarks:[
+        { who:'assistant', me:false, text:'Per merchant, then. The key belongs to whoever the charge belongs to, never to the platform.' } ] },
+    ],
+  },
 ];
 
-/* The same prefix rule the browser uses, so the server-rendered first query
-   and every later one are marked identically. */
+/* The same prefix rule the browser uses, so the server-rendered first act and
+   every later one are marked identically. */
 function markup(text, query) {
   const out = [];
   for (const piece of text.split(/(\w+)/)) {
@@ -42,7 +68,7 @@ function markup(text, query) {
   }
   return out;
 }
-const first = queries[0];
+const first = acts[0];
 
 const months = [
   {m:'FEB',on:false,n:''},{m:'MAR',on:false,n:''},{m:'APR',on:false,n:''},
@@ -50,18 +76,60 @@ const months = [
 ];
 
 const coverage = [
-  { line:'── 3 sessions · 3 searched · conversation only — tool output NOT searched (--results)',
-    gloss:'It read what you and your agent said to each other — not the output of every command it ran. That is most of what is on disk and almost never what you want. Ask for it and this line says so.' },
+  { line:'── 3 sessions · 3 searched · conversation only \u2014 tool output NOT searched (--results)',
+    gloss:'It read what you and your agent said to each other, not the output of every command it ran. That is most of what is on disk and almost never what you want. Ask for it and this line says so.' },
   { line:'── live to 2026-05-12 · archived before that · refreshed just now',
     gloss:'How current the answer is. A conversation from ten minutes ago is already findable. Nothing runs in the background waiting to notice.' },
   { line:'── scanned 3.0 KB · 14 turns · 7 ms',
     gloss:'What it cost your machine. Seven milliseconds, from cold, reading rather than consulting.' },
   { line:'── 1.0 KB · ~264 tokens',
-    gloss:'What the answer costs your agent to read. Checking an old decision should be cheaper than redoing it — so every answer prices itself, and you can cap it.' },
+    gloss:'What the answer costs your agent to read. Checking an old decision should be cheaper than redoing it, so every answer prices itself, and you can cap it.' },
+];
+
+/* Figures for the agent section come out of bench/RESULTS.md rather than being
+   retyped beside it, so a re-run of the harness moves the page. */
+const at = (name, corpus) => bench.scenarios.find(s => s.name === name && s.corpus === corpus);
+const medium = n => at(n, 'medium');
+const chain = ['recall find bare', 'recall turns bare', 'recall show bare']
+  .reduce((t, n) => t + medium(n).ms, 0);
+
+const agentFigures = [
+  { n: `${medium('recall find bare').ms} ms`, k: 'a query against a 50 MB session store', s: 'end to end, process start to exit' },
+  { n: `${medium('recall find --brief').out} B`, k: 'the whole answer, in --brief', s: 'about 96 tokens, footer included' },
+  { n: `${medium('recall find --ids').out} B`, k: 'in --ids, when it only needs the handle', s: 'one session id, nothing else' },
+  { n: '5', k: 'MCP tools, none of which can write', s: 'no delete, no edit, no shell' },
+];
+
+const privacy = [
+  ['Account required', 'none'],
+  ['Bytes sent anywhere', 'none'],
+  ['Telemetry, analytics, crash reports', 'none'],
+  ['Background process or daemon', 'none'],
+  ['Cloud index of your history', 'none'],
+  ['Network calls during a search', 'none'],
+];
+
+const speeds = [
+  { k: 'A typical search', s: 'everything, from cold', v: '30 ms', w: 27 },
+  { k: 'Command output too', s: 'roughly 20× the text', v: '93 ms', w: 82 },
+  { k: 'A search that finds nothing', s: 'every byte read first', v: '113 ms', w: 100 },
+  { k: 'One blink of your eye', s: 'for scale, not a measurement', v: '100 ms', w: 88, ref: true },
+];
+
+const schema = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'recall',
+    url: 'https://recall.mayberuk.com',
+    inLanguage: 'en',
+    publisher: { '@type': 'Person', name: 'mayberuk', url: 'https://github.com/mayberuk' },
+  },
 ];
 ---
-<Base title="recall — search every conversation you have had with your coding agent"
-      description="recall finds any past conversation with Claude Code or Codex on your machine in about 30 milliseconds, even when you cannot remember the words you used. Works from any checkout, and your agent can search it directly.">
+<Base title="recall, search every conversation you have had with your coding agent"
+      description="recall finds any past Claude Code or Codex conversation on your machine in about 30 milliseconds, even when you cannot remember the words you used. No index, nothing uploaded, and your agent can search it directly over MCP."
+      schema={schema}>
 
 <div class="feed l" aria-hidden="true"></div>
 <div class="feed r" aria-hidden="true"></div>
@@ -69,21 +137,20 @@ const coverage = [
 
 <Masthead current="index" />
 
+<main id="main">
 <div class="hero">
   <div class="wrap">
     <div class="heroGrid">
       <div>
-        <h1>Your agent forgot. Your machine <em>didn’t.</em></h1>
+        <h1>Your agent forgot. <em>You didn’t.</em></h1>
         <p class="lede">Every conversation you’ve had with Claude Code or Codex is still on your
-        disk. recall finds the one you’re thinking of in <span class="num">30 ms</span> — even when
+        disk. recall finds the one you’re thinking of in <span class="num">30 ms</span>, even when
         you’ve forgotten the words you used.</p>
         <div class="entry" id="install">
           <code id="cmd">curl -fsSL https://raw.githubusercontent.com/mayberuk/recall/main/install.sh | sh</code>
           <button type="button" id="copy" aria-label="Copy the install command">Copy</button>
-          <span class="stamp" aria-hidden="true">Entered in log</span>
         </div>
-        <p class="data" style="color:var(--ink-2);margin:.6rem 0 0;font-size:.71rem">
-          macOS · Linux · Windows. Checksum verified. Nothing left running.</p>
+        <p class="data foot">macOS · Linux · Windows. Checksum verified. Nothing left running.</p>
       </div>
       <dl class="reg">
         <div><dt class="cap">Typical search</dt><dd>30 ms</dd></div>
@@ -98,35 +165,51 @@ const coverage = [
 
 <section class="flush">
   <div class="wrap">
-    <p class="ask"><span class="prompt">$ recall find</span>{queries.map((qq,i) => (
-      <button type="button" class:list={['q', i === 0 && 'on']} data-q={qq.q} aria-pressed={i === 0 ? 'true' : 'false'}>{qq.q}</button>
-    ))}<span class="from">run from src/payments</span></p>
-    <div class="sheet" id="proof">
-      <span class="landed" aria-hidden="true">Found</span>
-      <table>
-        <thead><tr><th>Conversation</th><th>Date</th><th>Project</th><th>Branch</th><th>Found</th></tr></thead>
-        <tbody>
-          {first.hits.map((h,i) => (<>
-            <tr class:list={['head', i === 0 && 'mark']}>
-              <td>{h.id}</td><td>{h.date}</td><td>{h.repo}</td><td>{h.branch}</td><td>{h.count}</td>
-            </tr>
-            {h.remarks.map(r => (
-              <tr class={i === 0 ? 'mark' : undefined}>
-                <td><span class:list={['who', r.me && 'me']}>{r.who}</span></td>
-                <td class="rem" colspan="4">{markup(r.text, first.q).map(m => (<>
-                  {m.hit && <mark>{m.hit}</mark>}{m.rest}
-                </>))}</td>
+    <div class="run" id="run">
+      <p class="runHead">
+        <span class="cap">Session log · live run</span>
+        <span class="runFrom data">run from ~/src/payments</span>
+        <button type="button" class="runPlay" id="runPlay" aria-pressed="false" hidden>Pause</button>
+      </p>
+      <p class="ask" id="askLine">
+        <span class="prompt" aria-hidden="true">$</span><span
+        class="typed" id="typed">{first.cmd}</span><span
+        class="caret" id="caret" aria-hidden="true"></span><span
+        class="ghost" id="ghost" aria-hidden="true"></span>
+        <span class="took" id="took">{first.took}</span>
+      </p>
+      <div class="sheet" id="proof">
+        <table>
+          <thead><tr id="cols">{first.cols.map(c => <th>{c}</th>)}</tr></thead>
+          <tbody>
+            {first.hits.map((h,i) => (<>
+              <tr class:list={['head', i === 0 && 'mark']}>
+                <td>{h.id}</td><td>{h.date}</td><td>{h.repo}</td><td>{h.branch}</td><td>{h.count}</td>
               </tr>
-            ))}
-          </>))}
-        </tbody>
-      </table>
-      <div class="carriage" aria-hidden="true"></div>
+              {h.remarks.map(r => (
+                <tr class={i === 0 ? 'mark' : undefined}>
+                  <td><span class:list={['who', r.me && 'me']}>{r.who}</span></td>
+                  <td class="rem" colspan="4">{markup(r.text, first.q).map(m => (<>
+                    {m.hit && <mark>{m.hit}</mark>}{m.rest}
+                  </>))}</td>
+                </tr>
+              ))}
+            </>))}
+          </tbody>
+        </table>
+        <div class="carriage" aria-hidden="true"></div>
+      </div>
+      <p class="runNote" id="runNote">{first.note}</p>
     </div>
-    <p style="margin:.8rem 0 0;max-width:56ch">The marked one is on <b>hotfix/dedupe</b> — a branch
-    deleted locally months ago. Agents file conversations by folder, so one project scatters across
-    every clone you’ve had. recall recognises a project by its <span class="hl-g">git remote</span>,
-    so all of them are one history.</p>
+    <p class="ask jump" id="jump" hidden>
+      <span class="cap jumpCap">Jump to</span>{acts.map((a,i) => (
+        <button type="button" class:list={['q', i === 0 && 'on']} data-act={i}
+                aria-pressed={i === 0 ? 'true' : 'false'}>{a.cmd.replace('recall ', '')}</button>
+      ))}
+    </p>
+    <p class="runAfter">Nothing above was set up. recall recognises a project by its
+    <span class="hl-g">git remote</span>, so every clone, worktree and deleted branch you have ever
+    worked in is one history.</p>
   </div>
 </section>
 
@@ -141,8 +224,8 @@ const coverage = [
 found elsewhere: 5 hits in 1 other repo
   github.com/acme/infra                    5 hits · 1 session
 run: recall find 'connection pooling' --all</pre><div class="carriage" aria-hidden="true"></div></div>
-    <p style="margin:.85rem 0 0">Empty-handed, it still hands you the
-    <span class="hl-g">closest words in your own history</span> — and points at the project the
+    <p class="after">Empty-handed, it still hands you the
+    <span class="hl-g">closest words in your own history</span>, and points at the project the
     answer is actually in.</p>
   </div>
 </section>
@@ -165,8 +248,8 @@ run: recall find 'connection pooling' --all</pre><div class="carriage" aria-hidd
     <div class="field">
       <div class="wrap" style="max-width:none;padding:0">
         <h2>Your agent can search it <em style="font-style:normal;color:var(--stamp)">itself</em></h2>
-        <p style="max-width:52ch;margin-bottom:1.5rem">recall is an MCP server too. Claude Code and
-        Codex query your history mid-task, without you pasting anything.</p>
+        <p style="max-width:52ch;margin-bottom:1.5rem">recall is an MCP server too. Your agent
+        queries your history mid-task, without you pasting anything.</p>
         <div class="entry" style="max-width:30rem"><code>recall mcp install claude-code</code></div>
         <div class="pair" style="margin-top:1.9rem">
           <div><h3>It reaches for it unprompted</h3><p>“Have we hit this before?” is enough. You never say the word recall.</p></div>
@@ -174,6 +257,8 @@ run: recall find 'connection pooling' --all</pre><div class="carriage" aria-hidd
           <div><h3>Read-only, always</h3><p>Five tools. None can write, delete or alter anything.</p></div>
           <div><h3>Nothing goes anywhere</h3><p>Your machine, your files. No account, no upload.</p></div>
         </div>
+        <p class="cap agentsCap">Registers itself with · <code>recall mcp install &lt;name&gt;</code></p>
+        <Agents />
       </div>
     </div>
   </div>
@@ -181,9 +266,49 @@ run: recall find 'connection pooling' --all</pre><div class="carriage" aria-hidd
 
 <section>
   <div class="wrap">
-    <h2>It tells you what it <span class="hl">skipped</span> <span class="pressed warn" id="everytime">Every time</span></h2>
+    <h2>Built to be <span class="hl">called</span>, not just typed</h2>
+    <p>An agent pays for every token it reads and every second it waits. recall is priced for a
+    caller that will run it four times in a row.</p>
+    <dl class="figs">{agentFigures.map(f => (
+      <div><dt>{f.n}</dt><dd><b>{f.k}</b><span>{f.s}</span></dd></div>
+    ))}</dl>
+    <div class="pair colsTwo">
+      <div>
+        <h3>Narrow in three round trips</h3>
+        <p><code class="data">find</code> which session, <code class="data">turns</code> for the
+        passage, <code class="data">show</code> for the context around it. All three against a
+        50 MB store cost <b>{chain.toFixed(1)} ms</b> together, so an agent can iterate instead of
+        guessing once.</p>
+      </div>
+      <div>
+        <h3>Branch without parsing</h3>
+        <p><code class="data">exit 1</code> means the search ran and matched nothing, distinct from
+        <code class="data">exit 2</code> for bad usage and <code class="data">3</code> for an
+        unreadable archive. An agent tests a status, never a string.</p>
+      </div>
+      <div>
+        <h3>Cap the answer before it exists</h3>
+        <p><code class="data">--budget 2000</code> shapes the reply to roughly that many tokens.
+        <code class="data">--max-bytes</code> refuses outright above a ceiling. Neither truncates
+        mid-thought; both are stated in the footer.</p>
+      </div>
+      <div>
+        <h3>Machine forms, not scraped text</h3>
+        <p><code class="data">--json</code> is one object, <code class="data">--format jsonl</code>
+        is one per line for streaming, <code class="data">--ids</code> is bare session ids to pipe.
+        The coverage footer is a record in all three.</p>
+      </div>
+    </div>
+    <p class="data foot">Figures measured on {bench.hardware.split(' · ')[0]},
+      against the seeded medium corpus. <a href="/bench/">Every benchmark, in full</a>.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>It tells you what it <span class="hl">skipped</span></h2>
     <p>Most search narrows quietly, so “no results” reads as “never happened.” recall ends every
-    answer with what it did and didn’t look at.</p>
+    answer, every time, with what it did and did not look at.</p>
     <div class="cov">
       {coverage.map((c,i) => (
         <div>
@@ -192,86 +317,90 @@ run: recall find 'connection pooling' --all</pre><div class="carriage" aria-hidd
         </div>
       ))}
     </div>
-    <p style="margin:1rem 0 0">If a limit isn’t printed there, it wasn’t applied.</p>
+    <p class="after">If a limit isn’t printed there, it wasn’t applied.</p>
   </div>
 </section>
 
 <section>
   <div class="wrap">
-    <h2>Fast because it reads <span class="hl-g">everything</span></h2>
-    <p>No index to build, rebuild, or go stale. The conversation is only about
-    <span class="num">3%</span> of what your agent writes down — the rest is command output.</p>
-    <div class="cols">
-      <div><b>A typical search</b><span>everything, from cold</span><i>30 ms</i></div>
-      <div><b>Command output too</b><span>roughly 20× the text</span><i>93 ms</i></div>
-      <div><b>A search that finds nothing</b><span>every byte read first</span><i>113 ms</i></div>
-    </div>
-    <p class="data" style="color:var(--ink-2);margin:.9rem 0 0;font-size:.71rem">
-      143 conversations · 1.52 GB. Benchmarks run against a generated history, so they reproduce on
-      your machine — <a href="https://github.com/mayberuk/recall/blob/main/bench/RESULTS.md">the numbers</a>.</p>
+    <h2>No index. Nothing to go <span class="hl-g">stale</span>.</h2>
+    <p>Other tools are fast because they read a summary they built earlier, which is why they miss
+    the conversation you had ten minutes ago. recall reads the whole store on every query and still
+    finishes inside a blink.</p>
+    <ol class="cols" id="scale">{speeds.map(s => (
+      <li class={s.ref ? 'ref' : undefined} style={`--w:${s.w}%`}>
+        <b>{s.k}</b><span>{s.s}</span><i>{s.v}</i><em aria-hidden="true"></em>
+      </li>
+    ))}</ol>
+    <p class="data foot">143 conversations · 1.52 GB, on one developer machine. The conversation is
+      about <span class="numSm">3%</span> of what an agent writes down; the rest is command output.
+      <a href="/bench/">The reproducible figures</a> run against a generated history instead.</p>
   </div>
 </section>
+
+<section>
+  <div class="wrap">
+    <h2>It never leaves the <span class="hl">machine</span></h2>
+    <p>Not a policy, and not a setting you have to find. There is no code in recall that uploads
+    anything, because there is nowhere for it to go.</p>
+
+    <div class="meters" id="meters">
+      <div class="meter">
+        <p class="cap">Read from your disk</p>
+        <p class="meterN" id="mRead">0 <small>B</small></p>
+        <div class="meterBar"><b id="mReadBar"></b></div>
+        <p class="meterS">every byte of every past conversation, on every search</p>
+      </div>
+      <div class="meter out">
+        <p class="cap">Sent anywhere</p>
+        <p class="meterN"><span class="zero">0</span> <small>B</small></p>
+        <div class="meterBar"><b class="flat"></b></div>
+        <p class="meterS">the counter that does not move, and the reason there is no account</p>
+      </div>
+    </div>
+
+    <dl class="reg regWide">{privacy.map(([k, v]) => (
+      <div><dt>{k}</dt><dd class="none">{v}</dd></div>
+    ))}</dl>
+
+    <div class="cov honest">
+      <p><b>One exception, stated rather than buried.</b> <code class="data">recall update</code>
+      asks the GitHub releases API which version is current, and only when you type it. That is a
+      request to <code class="data">api.github.com</code> carrying your IP address and nothing
+      else: no query, no session, no path. <code class="data">recall doctor</code> refreshes the
+      same answer at most once a day, and only at a terminal.
+      <code class="data">RECALL_NO_UPDATE_CHECK=1</code> stops both, and then the binary opens no
+      socket at all.</p>
+    </div>
+  </div>
+</section>
+</main>
 
 <footer>
   <div class="wrap">
     <dl>
       <div><dt class="cap">Kept by</dt><dd>mayberuk</dd></div>
       <div><dt class="cap">Licence</dt><dd>MIT</dd></div>
-      <div><dt class="cap">Docs</dt><dd><a href="https://github.com/mayberuk/recall#readme">README</a></dd></div>
+      <div><dt class="cap">Read</dt><dd><a href="/docs/">Documentation</a></dd></div>
+      <div><dt class="cap">Measured</dt><dd><a href="/bench/">Benchmarks</a></dd></div>
+      <div><dt class="cap">For agents</dt><dd><a href="/llms.txt">llms.txt</a></dd></div>
     </dl>
-    <p class="data" style="margin:0;color:var(--ink-2);font-size:.71rem">Sheet 1 of 1</p>
+    <p class="data sheetNo">Sheet 1 of 3</p>
   </div>
 </footer>
 
-<script type="application/json" id="qdata" set:html={JSON.stringify(queries)}></script>
+<script type="application/json" id="actdata" set:html={JSON.stringify(acts)}></script>
 
 <script is:inline>
   /* Behaviour ships inline and works before any bundle arrives. */
   (function () {
-    var entry = document.getElementById('install'), btn = document.getElementById('copy'), cmd = document.getElementById('cmd');
+    var btn = document.getElementById('copy'), cmd = document.getElementById('cmd');
     btn.addEventListener('click', function () {
       navigator.clipboard.writeText(cmd.textContent.trim()).then(function () {
-        entry.classList.add('done'); btn.disabled = true; btn.textContent = 'Copied';
+        btn.classList.add('ok'); btn.disabled = true; btn.textContent = 'Copied';
       }, function () {
         var r = document.createRange(); r.selectNodeContents(cmd);
         var s = getSelection(); s.removeAllRanges(); s.addRange(r);
-      });
-    });
-    /* Re-running the search is the page's one real control. The corpus is
-       already here; only the query changes, so the marks are computed rather
-       than authored — which is what the tool itself does. */
-    var sets = JSON.parse(document.getElementById('qdata').textContent);
-    var tbody = document.querySelector('#proof tbody');
-    function esc(t) { var d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
-    function marked(text, query) {
-      return text.split(/(\w+)/).map(function (piece) {
-        var n = 0;
-        while (n < piece.length && n < query.length && piece[n].toLowerCase() === query[n].toLowerCase()) n++;
-        return n >= 4 ? '<mark>' + esc(piece.slice(0, n)) + '</mark>' + esc(piece.slice(n)) : esc(piece);
-      }).join('');
-    }
-    function paint(set) {
-      tbody.innerHTML = set.hits.map(function (h, i) {
-        var top = i === 0;
-        return '<tr class="head' + (top ? ' mark' : '') + '"><td>' + esc(h.id) + '</td><td>' + esc(h.date) +
-          '</td><td>' + esc(h.repo) + '</td><td>' + esc(h.branch) + '</td><td>' + esc(h.count) + '</td></tr>' +
-          h.remarks.map(function (r) {
-            return '<tr' + (top ? ' class="mark"' : '') + '><td><span class="who' + (r.me ? ' me' : '') + '">' +
-              esc(r.who) + '</span></td><td class="rem" colspan="4">' + marked(r.text, set.q) + '</td></tr>';
-          }).join('');
-      }).join('');
-    }
-    document.querySelectorAll('.q').forEach(function (b) {
-      b.addEventListener('click', function () {
-        if (b.classList.contains('on')) return;
-        document.querySelectorAll('.q').forEach(function (o) {
-          o.classList.remove('on'); o.setAttribute('aria-pressed', 'false');
-        });
-        b.classList.add('on'); b.setAttribute('aria-pressed', 'true');
-        var set = sets.filter(function (d) { return d.q === b.getAttribute('data-q'); })[0];
-        /* The motion chunk, if it loaded, prints the new result under the
-           carriage. Without it the sheet simply changes. */
-        (window.__reprint || function (f) { f(); })(function () { paint(set); });
       });
     });
 
@@ -289,77 +418,238 @@ run: recall find 'connection pooling' --all</pre><div class="carriage" aria-hidd
 </script>
 
 <script>
-  /* Motion is a separate chunk that a reader who asked for less never fetches.
-     Everything here animates from a state the script itself arms, so the page
-     is fully printed when this file does not run. */
+  /* The live run. A command types itself, takes the completion it is offered,
+     runs, prints, and is edited into the next one, because the thing worth
+     showing is not one result but how little work getting to it costs.
+
+     Everything here animates from a state this file arms, so a reader with no
+     JavaScript, or one who asked for no motion, gets the first run already
+     printed and the buttons still switching between the three. */
+  const $run = document.getElementById('run');
+  const $typed = document.getElementById('typed');
+  const $ghost = document.getElementById('ghost');
+  const $caret = document.getElementById('caret');
+  const $took = document.getElementById('took');
+  const $cols = document.getElementById('cols');
+  const $note = document.getElementById('runNote');
+  const $play = document.getElementById('runPlay');
   const $proof = document.getElementById('proof');
   const $miss = document.getElementById('miss');
   const $spine = document.getElementById('spine');
-  const $landed = document.querySelector('.landed');
-  const $pressed = document.getElementById('everytime');
+  const $scale = document.getElementById('scale');
+  const $meters = document.getElementById('meters');
+  const $tbody = $proof.querySelector('tbody');
+  const $carriage = $proof.querySelector('.carriage');
+  const acts = JSON.parse(document.getElementById('actdata').textContent);
+  const chips = [].slice.call(document.querySelectorAll('.q'));
 
-  const printed = () => {
-    $landed?.classList.add('on');
-    $pressed?.classList.remove('armed');
-    $spine?.classList.remove('armed');
+  const esc = (t) => { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; };
+  const marked = (text, query) => text.split(/(\w+)/).map((piece) => {
+    let n = 0;
+    while (n < piece.length && n < query.length && piece[n].toLowerCase() === query[n].toLowerCase()) n++;
+    return n >= 4 ? '<mark>' + esc(piece.slice(0, n)) + '</mark>' + esc(piece.slice(n)) : esc(piece);
+  }).join('');
+
+  const paint = (act) => {
+    $cols.innerHTML = act.cols.map((c) => '<th>' + esc(c) + '</th>').join('');
+    $tbody.innerHTML = act.hits.map((h, i) => {
+      const top = i === 0;
+      return '<tr class="head' + (top ? ' mark' : '') + '"><td>' + esc(h.id) + '</td><td>' + esc(h.date) +
+        '</td><td>' + esc(h.repo) + '</td><td>' + esc(h.branch) + '</td><td>' + esc(h.count) + '</td></tr>' +
+        h.remarks.map((r) =>
+          '<tr' + (top ? ' class="mark"' : '') + '><td><span class="who' + (r.me ? ' me' : '') + '">' +
+          esc(r.who) + '</span></td><td class="rem" colspan="4">' + marked(r.text, act.q) + '</td></tr>'
+        ).join('');
+    }).join('');
+    $note.textContent = act.note;
   };
 
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    printed();
+  const mark = (i) => chips.forEach((c, n) => {
+    c.classList.toggle('on', n === i);
+    c.setAttribute('aria-pressed', n === i ? 'true' : 'false');
+  });
+
+  /* Reduced motion, or no bundle at all: the buttons still work, they simply
+     do not perform. */
+  const still = (i) => {
+    const act = acts[i];
+    $typed.textContent = act.cmd;
+    $ghost.textContent = '';
+    $took.textContent = act.took;
+    paint(act);
+    mark(i);
+  };
+
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+
+  document.getElementById('jump').hidden = false;
+
+  if (reduced.matches) {
+    $caret.hidden = true;
+    chips.forEach((c, i) => c.addEventListener('click', () => still(i)));
   } else {
-    try {
-      const [{ animate }, { onScroll }, { stagger }, { steps }] = await Promise.all([
-        import('animejs/animation'), import('animejs/events'),
-        import('animejs/utils'), import('animejs/easings/steps'),
-      ]);
-      const enter = 'end-=120 start';
+    $play.hidden = false;
+    const { animate } = await import('animejs/animation');
+    const { onScroll } = await import('animejs/events');
+    const { stagger } = await import('animejs/utils');
+    const { steps } = await import('animejs/easings/steps');
+    const enter = 'end-=120 start';
 
-      /* The print head lays a sheet down line by line and retracts off the
-         bottom edge. steps() is the whole point: a carriage advances, it does
-         not glide. */
-      const $carriage = $proof.querySelector('.carriage');
-      window.__reprint = (repaint) => {
-        $landed?.classList.remove('on');
-        $carriage.style.height = '100%';
-        repaint();
-        animate($carriage, {
-          height: ['100%', '0%'], duration: 620, ease: steps(8),
-          onComplete: () => $landed?.classList.add('on'),
-        });
-      };
+    /* ── the run ─────────────────────────────────────────────────── */
+    let seq = 0, act = 0;
+    /* Three separate reasons to hold, so that scrolling past does not undo a
+       deliberate pause and returning to the tab does not resume one either. */
+    let byUser = false, offscreen = true, paused = true;
+    const sync = () => { paused = byUser || offscreen || document.hidden; };
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const held = async () => { while (paused) await wait(120); };
+    /* Every step checks the ticket it started with. A chip press bumps the
+       ticket, which is how a run in flight abandons itself rather than racing
+       the run that replaced it. */
+    const alive = (t) => t === seq;
 
-      $proof.classList.add('armed');
-      animate($carriage, {
-        height: ['100%', '0%'], duration: 780, ease: steps(9),
-        autoplay: onScroll({ enter, repeat: false }),
-        onComplete: () => $landed?.classList.add('on'),
-      });
+    const type = async (from, to, t, ms) => {
+      for (let i = from.length; i <= to.length; i++) {
+        if (!alive(t)) return false;
+        await held();
+        $typed.textContent = to.slice(0, i);
+        await wait(ms + Math.random() * ms * 0.9);
+      }
+      return alive(t);
+    };
+    const erase = async (to, t) => {
+      let s = $typed.textContent;
+      while (s.length > to.length) {
+        if (!alive(t)) return false;
+        await held();
+        s = s.slice(0, -1);
+        $typed.textContent = s;
+        await wait(17 + Math.random() * 16);
+      }
+      return alive(t);
+    };
 
-      $miss.classList.add('armed');
-      animate($miss.querySelector('.carriage'), {
-        height: ['100%', '0%'], duration: 560, ease: steps(6),
-        autoplay: onScroll({ enter, repeat: false }),
-      });
+    const print = (a) => new Promise((done) => {
+      $carriage.style.height = '100%';
+      paint(a);
+      animate($carriage, { height: ['100%', '0%'], duration: 600, ease: steps(8), onComplete: done });
+    });
 
-      /* The other machine on the page: a plotter, drawing the months up. */
-      $spine.classList.add('armed');
-      animate('.spine li b', {
-        scaleY: [0, 1], duration: 640, delay: stagger(60), ease: 'outExpo',
-        /* the bars start at zero height, so the section has to be what the
-           observer measures — a zero-height target never crosses a threshold */
-        autoplay: onScroll({ target: $spine, enter, repeat: false }),
-      });
+    const play = async (i, from) => {
+      const t = ++seq;
+      const a = acts[i];
+      mark(i);
+      $run.classList.add('running');
+      $took.textContent = '';
+      $note.textContent = '';
+      $ghost.textContent = '';
 
-      /* The third rubber stamp, landing where the sentence needs it. */
-      $pressed.classList.add('armed');
-      animate($pressed, {
-        opacity: [0, .9], scale: [1.7, 1], rotate: ['-8deg', '-3.5deg'],
-        duration: 520, ease: 'outExpo',
-        autoplay: onScroll({ enter: 'end-=200 start', repeat: false }),
-      });
-    } catch {
-      printed();
-    }
+      /* Editing the previous command down to what the next one shares with it
+         is what a person does, and it is why the erase is worth watching. */
+      let n = 0;
+      while (n < from.length && n < a.cmd.length && from[n] === a.cmd[n]) n++;
+      const common = from.slice(0, n);
+      if (!(await erase(common, t))) return;
+
+      const stem = a.stem && a.stem.startsWith(common) ? a.stem : a.cmd;
+      if (!(await type(common, stem, t, 34))) return;
+
+      /* The completion the shell would have offered: shown, waited on, then
+         taken whole, which is what pressing tab looks like. */
+      if (stem !== a.cmd) {
+        $ghost.textContent = a.cmd.slice(stem.length);
+        await wait(560); if (!alive(t)) return;
+        $ghost.classList.add('taken');
+        await wait(170); if (!alive(t)) return;
+        $typed.textContent = a.cmd;
+        $ghost.textContent = '';
+        $ghost.classList.remove('taken');
+      }
+
+      await wait(430); if (!alive(t)) return;
+      $run.classList.add('busy');
+      await print(a);
+      if (!alive(t)) return;
+      $run.classList.remove('busy', 'running');
+      $took.textContent = a.took;
+      $note.textContent = a.note;
+
+      await wait(3600); if (!alive(t)) return;
+      act = (i + 1) % acts.length;
+      play(act, a.cmd);
+    };
+
+    const label = () => {
+      $play.textContent = byUser ? 'Play' : 'Pause';
+      $play.setAttribute('aria-pressed', byUser ? 'true' : 'false');
+      $run.classList.toggle('held', byUser);
+    };
+
+    chips.forEach((c, i) => c.addEventListener('click', () => {
+      if (i === act && $run.classList.contains('running')) return;
+      act = i;
+      byUser = false;
+      sync();
+      label();
+      play(i, $typed.textContent);
+    }));
+
+    $play.addEventListener('click', () => { byUser = !byUser; sync(); label(); });
+
+    /* Nobody watches a demo they cannot see, and a hidden tab throttles the
+       timers into a stutter on return. Both hold it rather than let it run
+       badly. */
+    document.addEventListener('visibilitychange', sync);
+    let started = false;
+    new IntersectionObserver((es) => {
+      es.forEach((e) => { offscreen = !e.isIntersecting; });
+      sync();
+      if (!offscreen && !started) {
+        started = true;
+        /* The sheet keeps the run that was already printed, and the entry line
+           is cleared for a new one. A log with a prior entry on it is what this
+           page would look like if you walked up to the printer. */
+        $typed.textContent = '';
+        play(0, '');
+      }
+    }, { threshold: 0.2 }).observe($run);
+
+    /* ── the rest of the sheet ───────────────────────────────────── */
+    $miss.classList.add('armed');
+    animate($miss.querySelector('.carriage'), {
+      height: ['100%', '0%'], duration: 560, ease: steps(6),
+      autoplay: onScroll({ enter, repeat: false }),
+    });
+
+    /* The other machine on the page: a plotter, drawing the months up. */
+    $spine.classList.add('armed');
+    animate('.spine li b', {
+      scaleY: [0, 1], duration: 640, delay: stagger(60), ease: 'outExpo',
+      /* the bars start at zero height, so the section has to be what the
+         observer measures: a zero-height target never crosses a threshold */
+      autoplay: onScroll({ target: $spine, enter, repeat: false }),
+    });
+
+    $scale.classList.add('armed');
+    animate('#scale em', {
+      scaleX: [0, 1], duration: 900, delay: stagger(90), ease: 'outExpo',
+      autoplay: onScroll({ target: $scale, enter, repeat: false }),
+    });
+
+    /* The privacy meter. One counter races to the size of a real store while
+       the other holds at zero, and the stillness is the whole argument. */
+    const $n = document.getElementById('mRead');
+    const $bar = document.getElementById('mReadBar');
+    const gb = 1.52;
+    animate({ v: 0 }, {
+      v: gb, duration: 2200, ease: 'outQuart',
+      onUpdate: (self) => {
+        const v = self.targets[0].v;
+        $n.innerHTML = v.toFixed(2) + ' <small>GB</small>';
+        $bar.style.transform = 'scaleX(' + (v / gb) + ')';
+      },
+      autoplay: onScroll({ target: $meters, enter, repeat: false }),
+    });
   }
 </script>
 </Base>
