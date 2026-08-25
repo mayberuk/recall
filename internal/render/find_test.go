@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/mayberuk/recall/internal/schema"
+	"github.com/mayberuk/recall/internal/style"
 )
 
 func sampleCoverage() Coverage {
@@ -207,7 +208,7 @@ func TestWriteTermsNamesEveryOutcomeADeadEndTermCanHave(t *testing.T) {
 		{Term: "bitrise", Turns: 4},
 		{Term: "retry", Nearby: []string{"retries"}},
 		{Term: "quixotic"},
-	})
+	}, style.Palette{})
 	got := b.String()
 	for _, want := range []string{
 		"bitrise              4 turns carry it, but not together with the rest",
@@ -277,7 +278,7 @@ func TestTallySeparatesHitsFromTheTurnsTheySitIn(t *testing.T) {
 // author alone would misreport it as ordinary conversation.
 func TestHitWriteTagsByTierWhenItIsNotConversation(t *testing.T) {
 	var b strings.Builder
-	Hit{Author: schema.AuthorAssistant, Tier: schema.TierResult, Snippet: "build succeeded", Occurrences: 3}.write(&b)
+	Hit{Author: schema.AuthorAssistant, Tier: schema.TierResult, Snippet: "build succeeded", Occurrences: 3}.write(&b, style.Palette{})
 	got := b.String()
 	if !strings.Contains(got, "result") {
 		t.Errorf("a result-tier hit was tagged by author instead of tier: %q", got)

@@ -17,6 +17,7 @@ import (
 	"github.com/mayberuk/recall/internal/repo"
 	"github.com/mayberuk/recall/internal/scan"
 	"github.com/mayberuk/recall/internal/schema"
+	"github.com/mayberuk/recall/internal/style"
 )
 
 // statsSuppressed turns the stats footer off for both binaries the
@@ -766,9 +767,16 @@ const LargeAnswer = 16 << 10
 // stdout is unchanged, and it stays quiet for a caller that already set a
 // budget or asked for a machine format.
 func warnIfLarge(body []byte, g *Globals, levers string) {
-	if g.Format != FormatText || g.Budget > 0 || len(body) < LargeAnswer {
+	n := plainLen(body)
+	if g.Format != FormatText || g.Budget > 0 || n < LargeAnswer {
 		return
 	}
 	fmt.Fprintf(os.Stderr, "recall: this answer is %.1f KB (~%d tokens) — narrow it with %s\n",
-		float64(len(body))/1024, len(body)/render.BytesPerToken, levers)
+		float64(n)/1024, n/render.BytesPerToken, levers)
 }
+
+// plainLen is what an answer weighs to whoever reads it. Every size the CLI
+// reports or compares goes through here, because colour is bytes the terminal
+// eats: counting them would shrink answers, trip the large-answer warning, and
+// spend a caller's budget on escape sequences it never sees.
+func plainLen(body []byte) int { return len(style.Strip(string(body))) }

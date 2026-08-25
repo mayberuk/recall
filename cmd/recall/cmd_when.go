@@ -78,9 +78,10 @@ func when(args []string, out io.Writer) error {
 	}
 	view.Coverage = c.coverageOf(s.scan, f, s.skipped, limits, s.notes...)
 
-	body := render.WithSize(view.Text())
+	pal := g.Palette(out)
+	body := render.WithSize(view.WithPalette(pal).Text())
 	if f.Brief {
-		body = render.WithSize(view.Brief())
+		body = render.WithSize(view.WithPalette(pal).Brief())
 	}
 	if f.IDs {
 		body = view.IDs()

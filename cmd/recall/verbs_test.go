@@ -24,6 +24,7 @@ import (
 	"github.com/mayberuk/recall/internal/scan"
 	"github.com/mayberuk/recall/internal/schema"
 	"github.com/mayberuk/recall/internal/strip"
+	"github.com/mayberuk/recall/internal/style"
 )
 
 // The coverage declaration every searching verb emits by default. The wording is
@@ -788,7 +789,7 @@ func TestFitShowNeverFitsFull(t *testing.T) {
 	view, windows := twoWindows()
 	view.Full = true
 
-	body, err := (&corpus{}).fitShow(&view, windows, scan.Result{}, &Globals{MaxBytes: 900}, true)
+	body, err := (&corpus{}).fitShow(&view, windows, scan.Result{}, &Globals{MaxBytes: 900}, style.Palette{}, true)
 	if err != nil {
 		t.Fatalf("fitShow: %v", err)
 	}
@@ -806,7 +807,7 @@ func TestFitShowNeverFitsFull(t *testing.T) {
 func TestFitShowFitsAQuery(t *testing.T) {
 	view, windows := twoWindows()
 
-	body, err := (&corpus{}).fitShow(&view, windows, scan.Result{}, &Globals{MaxBytes: 900}, false)
+	body, err := (&corpus{}).fitShow(&view, windows, scan.Result{}, &Globals{MaxBytes: 900}, style.Palette{}, false)
 	if err != nil {
 		t.Fatalf("fitShow: %v", err)
 	}

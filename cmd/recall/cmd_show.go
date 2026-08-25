@@ -11,6 +11,7 @@ import (
 	"github.com/mayberuk/recall/internal/render"
 	"github.com/mayberuk/recall/internal/scan"
 	"github.com/mayberuk/recall/internal/schema"
+	"github.com/mayberuk/recall/internal/style"
 )
 
 // DefaultAround is how many turns of context each side of a match `show`
@@ -115,7 +116,7 @@ func show(args []string, out io.Writer) error {
 		view.Branch = ordered[0].Branch
 	}
 
-	body, err := c.fitShow(&view, windowViews(ordered, anchors, around, cmd.chars, full), res, g, full)
+	body, err := c.fitShow(&view, windowViews(ordered, anchors, around, cmd.chars, full), res, g, g.Palette(out), full)
 	if err != nil {
 		return err
 	}
@@ -137,12 +138,12 @@ func show(args []string, out io.Writer) error {
 // session at the default --around 3 renders 80 KB against a 64 KiB cap, so the
 // question shape this verb exists to serve — recover a conclusion and its
 // reasoning — would refuse more often than it answered.
-func (c *corpus) fitShow(view *render.Show, windows []render.Window, res scan.Result, g *Globals, full bool) ([]byte, error) {
+func (c *corpus) fitShow(view *render.Show, windows []render.Window, res scan.Result, g *Globals, pal style.Palette, full bool) ([]byte, error) {
 	attempt := func(n int) ([]byte, error) {
 		view.Windows = windows[:n]
 		view.Shown, view.Fitted = turnsIn(view.Windows), matchesIn(view.Windows)
 		view.Coverage = c.coverageOf(res, nil, drops{}, showLimits(*view, n < len(windows)))
-		return renderShow(*view, g)
+		return renderShow(*view, g, pal)
 	}
 	if full || len(windows) <= 1 {
 		return attempt(len(windows))
@@ -183,7 +184,7 @@ func (c *corpus) fitShow(view *render.Show, windows []render.Window, res scan.Re
 
 // renderShow produces whichever format was asked for, so the cap is measured
 // against the bytes that would actually be written.
-func renderShow(view render.Show, g *Globals) ([]byte, error) {
+func renderShow(view render.Show, g *Globals, pal style.Palette) ([]byte, error) {
 	switch g.Format {
 	case FormatJSON:
 		return render.JSON(view)
@@ -192,7 +193,7 @@ func renderShow(view render.Show, g *Globals) ([]byte, error) {
 	}
 	// The size footer is added here rather than at the end so the fitting search
 	// measures the bytes that will actually be written, footer included.
-	return render.WithSize(view.Text()), nil
+	return render.WithSize(view.WithPalette(pal).Text()), nil
 }
 
 func showLimits(view render.Show, cut bool) []render.Limit {

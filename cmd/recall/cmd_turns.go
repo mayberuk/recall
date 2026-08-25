@@ -87,6 +87,7 @@ func turns(args []string, out io.Writer) error {
 		Hits:    s.ranked.HitCount,
 		Matched: len(ranked),
 	}
+	pal := g.Palette(out)
 	build := func(limit, chars int) ([]byte, error) {
 		var limits []render.Limit
 		shown := ranked
@@ -113,9 +114,9 @@ func turns(args []string, out io.Writer) error {
 		case f.IDs:
 			return view.IDs(), nil
 		case f.Brief:
-			return render.WithSize(view.Brief()), nil
+			return render.WithSize(view.WithPalette(pal).Brief()), nil
 		default:
-			return render.WithSize(view.Text()), nil
+			return render.WithSize(view.WithPalette(pal).Text()), nil
 		}
 	}
 

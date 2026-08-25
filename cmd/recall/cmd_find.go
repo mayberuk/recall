@@ -79,6 +79,7 @@ func find(args []string, out, errOut io.Writer) error {
 		Tiers:     facetViews(s.ranked.Facets.Tier),
 	}
 
+	pal := g.Palette(out)
 	build := func(sz size) ([]byte, error) {
 		hits := sz.hits
 		if sz.brief {
@@ -109,9 +110,9 @@ func find(args []string, out, errOut io.Writer) error {
 		case f.IDs:
 			return view.IDs(), nil
 		case sz.brief:
-			return render.WithSize(view.Brief()), nil
+			return render.WithSize(view.WithPalette(pal).Brief()), nil
 		default:
-			return render.WithSize(view.Text()), nil
+			return render.WithSize(view.WithPalette(pal).Text()), nil
 		}
 	}
 
@@ -122,7 +123,7 @@ func find(args []string, out, errOut io.Writer) error {
 
 	if c.fzf {
 		records, note := view.FZF()
-		if err := render.Emit(errOut, note, g.MaxBytes-int64(len(records))); err != nil {
+		if err := render.Emit(errOut, note, g.MaxBytes-int64(plainLen(records))); err != nil {
 			return err
 		}
 		if err := render.Emit(out, records, g.MaxBytes); err != nil {
@@ -175,7 +176,7 @@ func fitToBudget(g *Globals, f *searchFlags, build func(size) ([]byte, error)) (
 			return nil, err
 		}
 		body = b
-		if int64(len(body)) <= ceiling || i == len(attempts)-1 {
+		if int64(plainLen(body)) <= ceiling || i == len(attempts)-1 {
 			break
 		}
 	}

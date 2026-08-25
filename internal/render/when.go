@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/mayberuk/recall/internal/style"
 )
 
 // Bucket is one month of the timeline. Months rather than days because the
@@ -28,7 +30,14 @@ type When struct {
 	Elsewhere []Elsewhere `json:"elsewhere,omitempty"`
 	Terms     []Term      `json:"terms,omitempty"`
 	Coverage  Coverage    `json:"coverage"`
+	// pal is unexported so encoding/json cannot reach it: colour is
+	// structurally unable to arrive in --json or --format jsonl.
+	pal style.Palette
 }
+
+// WithPalette returns a copy that renders its text form in colour. The zero
+// palette is the default, so a caller that never asks gets plain bytes.
+func (w When) WithPalette(p style.Palette) When { w.pal = p; return w }
 
 // Text is the human form of a when.
 func (w When) Text() []byte { return w.text(false) }
@@ -60,9 +69,9 @@ func (w When) text(brief bool) []byte {
 			where = "in " + w.Scope.Repo
 		}
 		fmt.Fprintf(&b, "no hits for %s %s\n", quote(w.Query), where)
-		writeElsewhere(&b, w.Query, w.Elsewhere)
-		writeTerms(&b, w.Terms)
-		writeLines(&b, w.Coverage.Lines())
+		writeElsewhere(&b, w.Query, w.Elsewhere, w.pal)
+		writeTerms(&b, w.Terms, w.pal)
+		writeLines(&b, w.Coverage.Lines(), w.pal)
 		return []byte(b.String())
 	}
 
@@ -76,9 +85,9 @@ func (w When) text(brief bool) []byte {
 	}
 	b.WriteString("\noldest first\n")
 	for _, s := range w.Sessions {
-		s.writeAs(&b, brief)
+		s.writeAs(&b, brief, w.pal)
 	}
-	writeLines(&b, w.Coverage.Lines())
+	writeLines(&b, w.Coverage.Lines(), w.pal)
 	return []byte(b.String())
 }
 

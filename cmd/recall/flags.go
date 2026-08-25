@@ -7,6 +7,7 @@ import (
 
 	"github.com/mayberuk/recall/internal/archive"
 	"github.com/mayberuk/recall/internal/fperr"
+	"github.com/mayberuk/recall/internal/style"
 )
 
 // DefaultMaxBytes caps what any verb may emit. The mean session's conversation
@@ -35,11 +36,16 @@ type Globals struct {
 	// all. Every verb — find, turns, when, show and doctor — reads whatever
 	// it resolves to.
 	Provider string
+
+	// Color is auto, always or never. Auto means "colour if a terminal is
+	// reading" — every other destination, a pipe and a file included, gets the
+	// same bytes it got before colour existed.
+	Color string
 }
 
 // NewGlobals returns the defaults a verb starts from.
 func NewGlobals() *Globals {
-	return &Globals{MaxBytes: DefaultMaxBytes, Format: FormatText, Provider: ProviderAuto}
+	return &Globals{MaxBytes: DefaultMaxBytes, Format: FormatText, Provider: ProviderAuto, Color: string(style.Auto)}
 }
 
 // The output formats. jsonl is one object per line so a caller can stream or
@@ -65,6 +71,20 @@ func (g *Globals) Bind(fs *flag.FlagSet) {
 	fs.StringVar(&g.Provider, "provider", g.Provider,
 		"auto, an agent name, or all — which agent's transcripts every verb reads: find, turns, "+
 			"when, show and doctor all resolve through this")
+	fs.StringVar(&g.Color, "color", g.Color, "auto, always or never — auto colours a terminal and nothing else")
+}
+
+// Palette resolves the run's colour for w. JSON and JSONL are never coloured
+// whatever --color says: those formats exist to be parsed, and a caller that
+// asked for machine output did not ask to strip escapes back out of it.
+func (g *Globals) Palette(w io.Writer) style.Palette {
+	if g.Format != FormatText {
+		return style.Palette{}
+	}
+	if g.Color == "" {
+		return style.Resolve(style.Auto, w)
+	}
+	return style.Resolve(style.Mode(g.Color), w)
 }
 
 // Check rejects a cap that cannot bound anything, resolves the two spellings
@@ -82,6 +102,14 @@ func (g *Globals) Check() error {
 	case FormatText, FormatJSON, FormatJSONL:
 	default:
 		return fperr.New(fperr.ArgError, "--format takes text, json or jsonl, got %q", g.Format)
+	}
+	// The zero value means auto, the same way it does for Provider: a Globals
+	// nobody filled in is a working default, not a configuration error.
+	if g.Color == "" {
+		g.Color = string(style.Auto)
+	}
+	if !style.ValidMode(g.Color) {
+		return fperr.New(fperr.ArgError, "--color takes %s, got %q", strings.Join(style.Modes, ", "), g.Color)
 	}
 	if g.JSON {
 		if g.Format == FormatJSONL {
