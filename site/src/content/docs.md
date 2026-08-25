@@ -41,6 +41,7 @@ them are what you came back for.
 | when did this come up | `recall when <query>` |
 | have I hit this before, anywhere | `recall find <query> --all` |
 | is the archive sound | `recall doctor` |
+| am I on the latest release | `recall update --check` |
 
 `recall guide` prints this same map at the terminal, plus how a query is read. It is one screen and
 costs no search, which is why it is the one thing worth running before your first query.
@@ -100,6 +101,20 @@ recall when "retry budget" --all
 
 Archive integrity, coverage boundaries, and format drift. Reports what the archive holds, how
 current it is, and any record types this build has never seen. Run it when an answer looks wrong.
+
+### `recall update`
+
+Replaces this binary with the latest published release, verifying its sha256 against the release's
+own `checksums.txt` first. `--check` reports what is available and installs nothing.
+
+```
+recall update
+recall update --check
+```
+
+A binary built from a checkout reports `dev` rather than a version, and `recall update` declines to
+replace it: it was compiled on purpose, and overwriting it would throw away whatever was being
+tested.
 
 ### `recall guide`
 
@@ -264,6 +279,31 @@ coverage block, so an agent can read what was skipped rather than assume nothing
 
 Search defaults to the current repo. Pass `all: true` to reach every repo on the machine.
 
+## Staying current
+
+recall makes **no network request of any kind** except from two verbs you type for that purpose:
+
+| Verb | What it does |
+|---|---|
+| `recall update` | resolves the latest release, verifies its sha256, replaces the binary |
+| `recall update --check` | resolves the latest release and stops |
+| `recall doctor` | refreshes the cached version number, silently, at most once a day |
+
+Nothing else opens a socket. A search reads a small file next to the archive and never asks
+anybody, which is why a search still costs what the benchmarks say it costs, and why there is still
+no daemon and no background process.
+
+When that cached file records a newer release, commands print one line about it **on stderr**, only
+when stderr is a terminal, and at most once a day. It never touches stdout, so it cannot land in a
+piped answer, a `--json` document, or an agent's context.
+
+What a check sends is an ordinary HTTPS GET to `api.github.com`, which reveals your IP address and
+the request's user agent, the same as visiting the releases page in a browser. It sends nothing
+about your machine, your repos, or anything recall has read. Set `RECALL_NO_UPDATE_CHECK` to any
+non-empty value and neither the check nor the notice happens at all.
+
+Package managers work too: re-running `install.sh` replaces the binary the same way.
+
 ## Interactive, with fzf
 
 ```
@@ -284,6 +324,7 @@ because recall did both already and letting fzf re-sort would discard concentrat
 | `RECALL_VERSION` | pin `install.sh` to a release instead of the latest |
 | `RECALL_AGENT` | default provider, overridden by `--provider` |
 | `NO_COLOR` | set and non-empty disables colour, as does `TERM=dumb` |
+| `RECALL_NO_UPDATE_CHECK` | set and non-empty disables the version check and its notice |
 
 ## Reading further
 

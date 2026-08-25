@@ -6,7 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **`recall update`.** Replaces the running binary with the latest published release, verifying its
+  sha256 against the release's own `checksums.txt` first and refusing on a mismatch, exactly as
+  `install.sh` has always done. `--check` reports what is available and installs nothing. A binary
+  built from a checkout reports `dev` and is left alone rather than overwritten. Works on Windows,
+  where a running image cannot be renamed over, by moving the outgoing binary aside and sweeping it
+  on the next run.
+- **A version notice.** When a newer release is known, commands print one line about it. It goes to
+  **stderr**, only when stderr is a terminal, and at most once a day. It never touches stdout, so
+  it cannot reach a piped answer, a `--json` document, an fzf record stream, or the byte-identical
+  baseline the differential suite compares against.
+
+### Changed
+
+- **recall can now make a network request, from two verbs and no others.** `recall update` and
+  `recall doctor` reach `api.github.com`; `doctor` does so silently, at most once a day, and only
+  when its stderr is a terminal. Every other verb reads the cached answer from a file beside the
+  archive and never opens a socket. There is still no daemon and no background process, and a
+  search still costs what the benchmarks say it costs. `RECALL_NO_UPDATE_CHECK`, set to any
+  non-empty value, disables the check and the notice together.
 
 ## [1.1.0] - 2026-08-23
 
