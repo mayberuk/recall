@@ -85,13 +85,16 @@ func Resolve(mode Mode, w io.Writer) Palette {
 	if os.Getenv("TERM") == "dumb" {
 		return Palette{}
 	}
-	return Palette{on: isTerminal(w)}
+	return Palette{on: IsTerminal(w)}
 }
 
-// isTerminal reports whether w is a character device. Deriving it from the file
+// IsTerminal reports whether w is a character device. Deriving it from the file
 // mode keeps this dependency-free: the two direct modules recall allows both
 // earned their place on measurement, and a third for one syscall would not.
-func isTerminal(w io.Writer) bool {
+//
+// Exported because the update notice needs the same question answered about
+// stderr, and two spellings of "is this a terminal" would eventually disagree.
+func IsTerminal(w io.Writer) bool {
 	f, ok := w.(interface{ Stat() (os.FileInfo, error) })
 	if !ok {
 		return false

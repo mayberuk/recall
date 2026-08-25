@@ -15,10 +15,12 @@ import (
 	"runtime"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/mayberuk/recall/internal/archive"
 	"github.com/mayberuk/recall/internal/fperr"
 	"github.com/mayberuk/recall/internal/strip"
+	"github.com/mayberuk/recall/internal/update"
 )
 
 // Providers register here rather than in internal/strip's own init: archive
@@ -55,7 +57,34 @@ func run(args []string, stdout, stderr io.Writer) int {
 		printVerbUsage(stdout, args[0])
 		return 0
 	}
-	return report(stderr, e.run(args[1:]))
+	code := report(stderr, e.run(args[1:]))
+	noticeAnUpdate(stderr, args[0])
+	return code
+}
+
+// noticeAnUpdate prints at most one line about a newer release, on stderr,
+// after the answer is already out.
+//
+// It reads a file and nothing else. The check that fills that file runs in
+// `recall doctor`, never here: an answer's latency is a headline claim on this
+// project, and a search that resolved a hostname first would make the claim
+// false in exactly the case a person experiences.
+//
+// stderr is not a detail. Every size recall reports, the --max-bytes cap, the
+// budget-fitting search and the differential baseline all count the bytes on
+// stdout, and a line of chatter in the middle of them would corrupt all four.
+func noticeAnUpdate(stderr io.Writer, verb string) {
+	switch verb {
+	case "update", "mcp":
+		// `update` says it itself, and `mcp serve` is a protocol stream whose
+		// stderr belongs to whichever client spawned it.
+		return
+	}
+	dir, err := archive.Dir()
+	if err != nil {
+		return
+	}
+	update.Nag(stderr, version, dir, time.Now())
 }
 
 // wantsHelp accepts the bare word `help` only where a caller could not have

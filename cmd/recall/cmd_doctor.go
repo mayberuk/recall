@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"sort"
+	"time"
 
 	"github.com/mayberuk/recall/internal/archive"
 	"github.com/mayberuk/recall/internal/fperr"
@@ -14,6 +16,8 @@ import (
 	"github.com/mayberuk/recall/internal/repo"
 	"github.com/mayberuk/recall/internal/schema"
 	"github.com/mayberuk/recall/internal/strip"
+	"github.com/mayberuk/recall/internal/style"
+	"github.com/mayberuk/recall/internal/update"
 )
 
 func newDoctorCmd() (*flag.FlagSet, *Globals) {
@@ -40,6 +44,12 @@ func doctor(args []string, out, errOut io.Writer) error {
 	if err := g.Check(); err != nil {
 		return err
 	}
+
+	// doctor is the "is this healthy" verb and is not on any latency gate, so
+	// it is where the version check lives. It refreshes the cache and prints
+	// nothing new: doctor's output is compared byte-for-byte against a baseline,
+	// and the notice belongs on stderr from the next command anyway.
+	refreshUpdateState(errOut)
 
 	sel, err := archive.Select()
 	if err != nil {
@@ -366,3 +376,44 @@ func plural(n int, one, many string) string {
 	}
 	return many
 }
+
+// refreshUpdateState asks the releases API what the newest tag is and records
+// it. Three gates, and all three have to open.
+//
+// A terminal is the load-bearing one: it keeps every test hermetic by
+// construction rather than by remembering an environment variable, since a
+// harness captures output through a pipe and never gets here. It is also the
+// honest reading of "the user is sitting here and asked" — nothing scripted,
+// piped or spawned by an agent reaches the network.
+//
+// Failure is silent on purpose. doctor reports on the archive, and it has to
+// keep doing that on a train with no signal.
+func refreshUpdateState(errOut io.Writer) {
+	if update.Silenced() || !style.IsTerminal(errOut) {
+		return
+	}
+	dir, err := archive.Dir()
+	if err != nil {
+		return
+	}
+	s := update.Load(dir)
+	if time.Since(s.CheckedAt) < updateCheckEvery {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), updateCheckTimeout)
+	defer cancel()
+	rel, err := update.Latest(ctx, update.Client())
+	if err != nil {
+		return
+	}
+	s.Latest, s.CheckedAt = rel.Tag, time.Now()
+	_ = update.Save(dir, s)
+}
+
+const (
+	// A day between checks. Releases are not frequent enough to justify more,
+	// and a check is a request to somebody else's server.
+	updateCheckEvery = 24 * time.Hour
+	// Short enough that a doctor run on a bad connection still finishes.
+	updateCheckTimeout = 5 * time.Second
+)

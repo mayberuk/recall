@@ -9,8 +9,9 @@ recall exists because coding agents key their session transcripts by checkout pa
 repository sprawls across clones and worktrees and a path-scoped search silently misses. recall
 resolves a repo by its git remote instead, making every checkout one corpus.
 
-Six commands: `find` (which session), `turns` (the passages), `show` (a conclusion in context),
-`when` (place a topic in time), `doctor` (archive integrity), `guide` (which command to use).
+Seven commands: `find` (which session), `turns` (the passages), `show` (a conclusion in context),
+`when` (place a topic in time), `doctor` (archive integrity), `guide` (which command to use),
+`update` (replace this binary with the latest release).
 Install with `curl -fsSL https://raw.githubusercontent.com/mayberuk/recall/main/install.sh | sh`;
 register it with a coding agent using `recall mcp install <client>`.
 

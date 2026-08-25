@@ -25,6 +25,7 @@ import (
 	"github.com/mayberuk/recall/internal/corpusgen"
 	"github.com/mayberuk/recall/internal/render"
 	"github.com/mayberuk/recall/internal/scan"
+	"github.com/mayberuk/recall/internal/update"
 )
 
 // baselineEnv names the git ref the current tree is compared against. The
@@ -534,6 +535,11 @@ func (p *pair) runWith(t *testing.T, binary, archive, dir string, args []string,
 		// cannot be compared against.
 		"RECALL_AGENT=claude-code",
 		scan.RangeFloorEnv+"="+p.rangeFloor(binary),
+		// The notice already cannot reach here: it needs a terminal, and both
+		// streams are pipes. Set anyway, because a future run under a pty would
+		// otherwise fail this suite for a reason that has nothing to do with the
+		// bytes it exists to compare.
+		update.SilenceEnv+"=1",
 	)
 	if suppressStats {
 		env = append(env, render.NoStatsEnv+"=1")
