@@ -17,15 +17,19 @@ import (
 	"unicode/utf8"
 
 	"github.com/mayberuk/recall/internal/fperr"
+	"github.com/mayberuk/recall/internal/style"
 )
 
 // Emit writes body only if it fits under max, and refuses with the size and the
 // flag to raise otherwise.
 func Emit(w io.Writer, body []byte, max int64) error {
-	if int64(len(body)) > max {
+	// Measured on the content, never on the presentation: colour is bytes the
+	// terminal consumes and neither the reader nor an agent ever takes in, so a
+	// styled answer must not be refused for a width it does not really have.
+	if int64(len(style.Strip(string(body)))) > max {
 		return fperr.New(fperr.OutputTooLarge,
 			"output is %d bytes, --max-bytes is %d — ask for less (--limit, --hits, --around, no --full) or raise --max-bytes",
-			len(body), max)
+			len(style.Strip(string(body))), max)
 	}
 	_, err := w.Write(body)
 	return err
@@ -50,14 +54,15 @@ func JSON(v any) ([]byte, error) {
 // it reports. Two rounds settle it unless the digit count changes, and three
 // always do.
 func WithSize(body []byte) []byte {
-	total := len(body)
+	plain := len(style.Strip(string(body)))
+	total := plain
 	line := ""
 	for i := 0; i < 3; i++ {
 		next := sizeLine(total)
 		if next == line {
 			break
 		}
-		total = len(body) + len(next)
+		total = plain + len(next)
 		line = next
 	}
 	return append(body, line...)

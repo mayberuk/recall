@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/mayberuk/recall/internal/schema"
+	"github.com/mayberuk/recall/internal/style"
 )
 
 // Turn is one turn printed in full. Show is the verb that recovers a conclusion
@@ -56,7 +57,14 @@ type Show struct {
 	Full     bool          `json:"full"`
 	Windows  []Window      `json:"windows"`
 	Coverage Coverage      `json:"coverage"`
+	// pal is unexported so encoding/json cannot reach it: colour is
+	// structurally unable to arrive in --json or --format jsonl.
+	pal style.Palette
 }
+
+// WithPalette returns a copy that renders its text form in colour. The zero
+// palette is the default, so a caller that never asks gets plain bytes.
+func (s Show) WithPalette(p style.Palette) Show { s.pal = p; return s }
 
 // JSONL is one object per printed turn, then the coverage record.
 func (s Show) JSONL() ([]byte, error) {
@@ -99,7 +107,7 @@ const (
 // Text is the human form of a show.
 func (s Show) Text() []byte {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s  %s\n", s.Session, strings.Join(nonEmpty(
+	fmt.Fprintf(&b, "%s  %s\n", s.pal.Handle(s.Session), strings.Join(nonEmpty(
 		s.Repo, s.Branch, s.turnCount(),
 	), "  "))
 	if s.Anchor == AnchorTail && s.Query == "" {
@@ -109,9 +117,9 @@ func (s Show) Text() []byte {
 		fmt.Fprintf(&b, "nothing to show for %s in this session\n", quote(s.Query))
 	}
 	for _, w := range s.Windows {
-		w.write(&b, s.Turns)
+		w.write(&b, s.Turns, s.pal)
 	}
-	writeLines(&b, s.Coverage.Lines())
+	writeLines(&b, s.Coverage.Lines(), s.pal)
 	return []byte(b.String())
 }
 
@@ -128,7 +136,7 @@ func (s Show) turnCount() string {
 	return fmt.Sprintf("%d %s (%s)", s.Turns, plural(s.Turns, "turn", "turns"), strings.Join(names, " + "))
 }
 
-func (w Window) write(b *strings.Builder, total int) {
+func (w Window) write(b *strings.Builder, total int, p style.Palette) {
 	fmt.Fprintf(b, "\nturns %d-%d of %d\n", w.From+1, w.To+1, total)
 	for _, t := range w.Turns {
 		t.write(b)

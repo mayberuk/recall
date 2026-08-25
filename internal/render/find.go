@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/mayberuk/recall/internal/schema"
+	"github.com/mayberuk/recall/internal/style"
 )
 
 // Hit is one match as it will be shown: the snippet is already cut, because the
@@ -78,7 +79,17 @@ type Find struct {
 	Authors   []Facet     `json:"authors,omitempty"`
 	Tiers     []Facet     `json:"tiers,omitempty"`
 	Coverage  Coverage    `json:"coverage"`
+
+	// pal is unexported on purpose. encoding/json cannot reach an unexported
+	// field, so it is structurally impossible for an escape byte to arrive in
+	// --json or --format jsonl no matter what a future caller does here.
+	pal style.Palette
 }
+
+// WithPalette returns a copy that renders its text form in colour. The zero
+// palette is the default, so a caller that never asks gets the plain bytes this
+// package emitted before colour existed.
+func (f Find) WithPalette(p style.Palette) Find { f.pal = p; return f }
 
 // Facet is one value of a facet field with its deduplicated hit and session
 // counts.
@@ -104,10 +115,10 @@ func (f Find) text(brief bool) []byte {
 			len(f.Sessions), plural(len(f.Sessions), "session", "sessions"),
 			f.Hits, plural(f.Hits, "hit", "hits"), quote(f.Query))
 		for _, s := range f.Sessions {
-			s.writeAs(&b, brief)
+			s.writeAs(&b, brief, f.pal)
 		}
 	}
-	writeLines(&b, f.Coverage.Lines())
+	writeLines(&b, f.Coverage.Lines(), f.pal)
 	return []byte(b.String())
 }
 
@@ -170,14 +181,14 @@ func (f Find) writeMiss(b *strings.Builder) {
 		where = "in " + f.Scope.Repo
 	}
 	fmt.Fprintf(b, "no hits for %s %s\n", quote(f.Query), where)
-	writeElsewhere(b, f.Query, f.Elsewhere)
-	writeTerms(b, f.Terms)
+	writeElsewhere(b, f.Query, f.Elsewhere, f.pal)
+	writeTerms(b, f.Terms, f.pal)
 }
 
 // writeElsewhere is acceptance case a5: a repo-scoped query that found nothing
 // locally reports what the rest of the machine holds, and the command that
 // reaches it.
-func writeElsewhere(b *strings.Builder, query string, elsewhere []Elsewhere) {
+func writeElsewhere(b *strings.Builder, query string, elsewhere []Elsewhere, p style.Palette) {
 	if len(elsewhere) == 0 {
 		return
 	}
@@ -191,19 +202,23 @@ func writeElsewhere(b *strings.Builder, query string, elsewhere []Elsewhere) {
 		fmt.Fprintf(b, "  %-40s %d %s · %d %s\n",
 			e.Repo, e.Hits, plural(e.Hits, "hit", "hits"), e.Sessions, plural(e.Sessions, "session", "sessions"))
 	}
-	fmt.Fprintf(b, "run: recall find %s --all\n", shellArg(query))
+	// a line the reader is meant to retype, so it carries the handle attribute
+	fmt.Fprintf(b, "run: %s\n", p.Handle("recall find "+shellArg(query)+" --all"))
 }
 
-func writeTerms(b *strings.Builder, terms []Term) {
+func writeTerms(b *strings.Builder, terms []Term, p style.Palette) {
 	for _, t := range terms {
+		// pad first, then style: escape bytes counted by %-20s would collapse
+		// the column to a couple of visible characters
+		term := p.Key(fmt.Sprintf("%-20s", t.Term))
 		switch {
 		case t.Turns > 0:
-			fmt.Fprintf(b, "  %-20s %d %s carry it, but not together with the rest\n",
-				t.Term, t.Turns, plural(t.Turns, "turn", "turns"))
+			fmt.Fprintf(b, "  %s %d %s carry it, but not together with the rest\n",
+				term, t.Turns, plural(t.Turns, "turn", "turns"))
 		case len(t.Nearby) > 0:
-			fmt.Fprintf(b, "  %-20s no turn carries it; nearby: %s\n", t.Term, strings.Join(t.Nearby, ", "))
+			fmt.Fprintf(b, "  %s no turn carries it; nearby: %s\n", term, p.Handle(strings.Join(t.Nearby, ", ")))
 		default:
-			fmt.Fprintf(b, "  %-20s no turn carries it, and nothing in the corpus is close\n", t.Term)
+			fmt.Fprintf(b, "  %s no turn carries it, and nothing in the corpus is close\n", term)
 		}
 	}
 }
@@ -217,17 +232,17 @@ func (s Session) Block() string {
 	return b.String()
 }
 
-func (s Session) write(b *strings.Builder) { s.writeAs(b, false) }
+func (s Session) write(b *strings.Builder) { s.writeAs(b, false, style.Palette{}) }
 
-func (s Session) writeAs(b *strings.Builder, brief bool) {
-	fmt.Fprintf(b, "%s  %s\n", s.ID, strings.Join(nonEmpty(
+func (s Session) writeAs(b *strings.Builder, brief bool, p style.Palette) {
+	fmt.Fprintf(b, "%s  %s\n", p.Handle(s.ID), strings.Join(nonEmpty(
 		dateRange(s.First, s.Last), s.Repo, s.Branch, s.tally(), agentNote(s.AgentHits),
 	), "  "))
 	if brief {
 		return
 	}
 	for _, h := range s.Shown {
-		h.write(b)
+		h.write(b, p)
 	}
 }
 
@@ -265,21 +280,68 @@ func agentNote(n int) string {
 	return fmt.Sprintf("%d from subagents", n)
 }
 
-func (h Hit) write(b *strings.Builder) {
+func (h Hit) write(b *strings.Builder, p style.Palette) {
 	tag := string(h.Author)
 	if h.Tier != schema.TierConversation {
 		tag = string(h.Tier)
 	}
 	repeat := ""
 	if h.Occurrences > 1 {
-		repeat = fmt.Sprintf(" ×%d", h.Occurrences)
+		repeat = p.Quiet(fmt.Sprintf(" ×%d", h.Occurrences))
 	}
-	fmt.Fprintf(b, "  %-10s %s%s\n", tag, h.Snippet, repeat)
+	// padded before styling, for the same column reason as writeTerms
+	fmt.Fprintf(b, "  %s %s%s\n", p.Key(fmt.Sprintf("%-10s", tag)), styleSnippet(p, h.Snippet), repeat)
 }
 
-func writeLines(b *strings.Builder, lines []string) {
+// styleSnippet inverts the matched words, guillemets included, so the marker
+// reads as one solid block rather than as punctuation with a highlight behind
+// it.
+//
+// The brackets stay. Dropping them would read a shade cleaner and would make
+// colour subtract content, and every size this tool reports is measured by
+// stripping the attributes back off: a terminal and a pipe would then be told
+// two different numbers for the same answer. A tool that prices its own output
+// does not get to price it differently depending on who is looking.
+func styleSnippet(p style.Palette, s string) string {
+	if !p.Enabled() {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	rest := s
+	for {
+		open := strings.Index(rest, MarkOpen)
+		if open < 0 {
+			break
+		}
+		close := strings.Index(rest[open+len(MarkOpen):], MarkClose)
+		if close < 0 {
+			break
+		}
+		hit := rest[open : open+len(MarkOpen)+close+len(MarkClose)]
+		b.WriteString(rest[:open])
+		b.WriteString(p.Match(hit))
+		rest = rest[open+len(MarkOpen)+close+len(MarkClose):]
+	}
+	b.WriteString(rest)
+	out := b.String()
+
+	// the edge elisions say "there was more here", which is context, not content
+	if strings.HasPrefix(out, "…") {
+		out = p.Quiet("…") + strings.TrimPrefix(out, "…")
+	}
+	if strings.HasSuffix(out, "…") {
+		out = strings.TrimSuffix(out, "…") + p.Quiet("…")
+	}
+	return out
+}
+
+// writeLines emits the coverage footer. Every line of it recedes: it is there
+// for the reader who wants to know what was not searched, and out of the way of
+// the one who already has their answer.
+func writeLines(b *strings.Builder, lines []string, p style.Palette) {
 	for _, l := range lines {
-		b.WriteString(l)
+		b.WriteString(p.Quiet(l))
 		b.WriteByte('\n')
 	}
 }
@@ -326,7 +388,9 @@ func (f Find) FZF() (records, note []byte) {
 	if len(f.Sessions) == 0 {
 		var b strings.Builder
 		f.writeMiss(&b)
-		writeLines(&b, f.Coverage.Lines())
+		// the fzf surfaces stay plain: field 1 is parsed as a session id by the
+		// binding, and an attribute there breaks every one of them
+		writeLines(&b, f.Coverage.Lines(), style.Palette{})
 		return nil, []byte(b.String())
 	}
 
@@ -339,7 +403,7 @@ func (f Find) FZF() (records, note []byte) {
 		// rather than being dropped; the last block is the only place it can
 		// go without becoming a record fzf would treat as a session.
 		if i == len(f.Sessions)-1 {
-			writeLines(&b, f.Coverage.Lines())
+			writeLines(&b, f.Coverage.Lines(), style.Palette{})
 		}
 		b.WriteString(fzfRecordEnd)
 	}

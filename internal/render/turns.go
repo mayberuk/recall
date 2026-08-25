@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/mayberuk/recall/internal/schema"
+	"github.com/mayberuk/recall/internal/style"
 )
 
 // Passage is one matched turn, quoted rather than summarised, stamped with
@@ -44,7 +45,14 @@ type Turns struct {
 	Elsewhere []Elsewhere `json:"elsewhere,omitempty"`
 	Terms     []Term      `json:"terms,omitempty"`
 	Coverage  Coverage    `json:"coverage"`
+	// pal is unexported so encoding/json cannot reach it: colour is
+	// structurally unable to arrive in --json or --format jsonl.
+	pal style.Palette
 }
+
+// WithPalette returns a copy that renders its text form in colour. The zero
+// palette is the default, so a caller that never asks gets plain bytes.
+func (t Turns) WithPalette(p style.Palette) Turns { t.pal = p; return t }
 
 // Text is the human form: a header per passage, then its words.
 func (t Turns) Text() []byte {
@@ -55,18 +63,18 @@ func (t Turns) Text() []byte {
 			where = "in " + t.Scope.Repo
 		}
 		fmt.Fprintf(&b, "no turns carry %s %s\n", quote(t.Query), where)
-		writeElsewhere(&b, t.Query, t.Elsewhere)
-		writeTerms(&b, t.Terms)
-		writeLines(&b, t.Coverage.Lines())
+		writeElsewhere(&b, t.Query, t.Elsewhere, t.pal)
+		writeTerms(&b, t.Terms, t.pal)
+		writeLines(&b, t.Coverage.Lines(), t.pal)
 		return []byte(b.String())
 	}
 
 	fmt.Fprintf(&b, "%d of %d matched %s for %s\n",
 		len(t.Passages), t.Matched, plural(t.Matched, "turn", "turns"), quote(t.Query))
-	for _, p := range t.Passages {
-		p.write(&b)
+	for _, psg := range t.Passages {
+		psg.write(&b, t.pal)
 	}
-	writeLines(&b, t.Coverage.Lines())
+	writeLines(&b, t.Coverage.Lines(), t.pal)
 	return []byte(b.String())
 }
 
@@ -75,10 +83,10 @@ func (t Turns) Text() []byte {
 func (t Turns) Brief() []byte {
 	var b strings.Builder
 	for _, p := range t.Passages {
-		fmt.Fprintf(&b, "%s  %s\n", p.Cite, strings.Join(nonEmpty(
+		fmt.Fprintf(&b, "%s  %s\n", t.pal.Handle(p.Cite), strings.Join(nonEmpty(
 			Day(parseStamp(p.TS)), p.Repo, p.Branch, p.who()), "  "))
 	}
-	writeLines(&b, t.Coverage.Lines())
+	writeLines(&b, t.Coverage.Lines(), t.pal)
 	return []byte(b.String())
 }
 
@@ -124,17 +132,22 @@ func (t Turns) sessions() int {
 	return len(seen)
 }
 
-func (p Passage) write(b *strings.Builder) {
-	fmt.Fprintf(b, "\n%s  %s\n", p.Cite, strings.Join(nonEmpty(
-		Day(parseStamp(p.TS)), p.Repo, p.Branch, p.who(), p.repeat()), "  "))
+func (p Passage) write(b *strings.Builder, pal style.Palette) {
+	fmt.Fprintf(b, "\n%s  %s\n", pal.Handle(p.Cite), strings.Join(nonEmpty(
+		Day(parseStamp(p.TS)), p.Repo, p.Branch, p.who(), pal.Quiet(p.repeat())), "  "))
 	for _, line := range strings.Split(p.Text, "\n") {
 		b.WriteString("    ")
 		b.WriteString(line)
 		b.WriteByte('\n')
 	}
 	if p.Truncated {
-		fmt.Fprintf(b, "    … %d bytes in this turn; `recall show %s --turn %s` for all of it\n",
-			p.Length, short(p.Session), p.UUID)
+		// The backticks stay inside the attribute for the same reason the
+		// guillemets do in styleSnippet: colour may add to an answer, never
+		// subtract from it, because every reported size is measured by
+		// stripping the attributes back off.
+		cmd := pal.Handle(fmt.Sprintf("`recall show %s --turn %s`", short(p.Session), p.UUID))
+		fmt.Fprintf(b, "    %s\n", pal.Quiet(fmt.Sprintf("… %d bytes in this turn; ", p.Length))+
+			cmd+pal.Quiet(" for all of it"))
 	}
 }
 
