@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320" role="img" aria-label="recall — search every conversation you have had with your coding agent">
+  <title>recall</title>
+  <defs>
+    <pattern id="screen" width="8" height="5" patternUnits="userSpaceOnUse">
+      <rect width="8" height="1" fill="#2f6b4f" fill-opacity="0.16"/>
+    </pattern>
+    <!-- Broken ink. The threshold is tuned to knock out about a tenth of the
+         field: a rubber stamp never lays down a solid one. It is applied to the
+         ink box only — filtering 11px lettering dissolves it. -->
+    <filter id="brokenink" x="-2%" y="-8%" width="104%" height="116%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" seed="7" result="n"/>
+      <feColorMatrix in="n" type="matrix"
+        values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 14 -9.4" result="t"/>
+      <feComposite in="SourceGraphic" in2="t" operator="out"/>
+    </filter>
+  </defs>
+  <rect width="1280" height="320" fill="#e3e7e1"/>
+  <rect x="0" y="0" width="1280" height="40" fill="url(#screen)"/><rect x="0" y="80" width="1280" height="40" fill="url(#screen)"/><rect x="0" y="160" width="1280" height="40" fill="url(#screen)"/><rect x="0" y="240" width="1280" height="40" fill="url(#screen)"/>
+  <g fill="#c2cbc4" shape-rendering="auto"><circle cx="18" cy="20" r="5"/><circle cx="18" cy="60" r="5"/><circle cx="18" cy="100" r="5"/><circle cx="18" cy="140" r="5"/><circle cx="18" cy="180" r="5"/><circle cx="18" cy="220" r="5"/><circle cx="18" cy="260" r="5"/><circle cx="18" cy="300" r="5"/><circle cx="1262" cy="20" r="5"/><circle cx="1262" cy="60" r="5"/><circle cx="1262" cy="100" r="5"/><circle cx="1262" cy="140" r="5"/><circle cx="1262" cy="180" r="5"/><circle cx="1262" cy="220" r="5"/><circle cx="1262" cy="260" r="5"/><circle cx="1262" cy="300" r="5"/></g>
+  <line x1="36" y1="0" x2="36" y2="320" stroke="#1f4e79" stroke-width="1" stroke-dasharray="4,3" opacity=".55"/>
+  <line x1="1244" y1="0" x2="1244" y2="320" stroke="#1f4e79" stroke-width="1" stroke-dasharray="4,3" opacity=".55"/>
+  <g shape-rendering="crispEdges">
+    <line x1="52" y1="22" x2="1228" y2="22" stroke="#1f4e79" stroke-width="3"/>
+    <rect x="52" y="27" width="1176" height="62" fill="#edefe9" stroke="#1f4e79" stroke-width="1"/>
+    <line x1="52" y1="89" x2="1228" y2="89" stroke="#1f4e79" stroke-width="1.5"/>
+    <line x1="52" y1="302" x2="1228" y2="302" stroke="#1f4e79" stroke-width="2"/>
+    <g transform="translate(64,33)">
+    <rect width="50.00" height="50.00" fill="#e3e7e1"/>
+    <rect x="0.62" y="0.62" width="48.75" height="48.75" fill="none" stroke="#1f4e79" stroke-width="1.25"/>
+    <line x1="11.25" y1="0" x2="11.25" y2="50.00" stroke="#1f4e79" stroke-width="1.00"/>
+    <circle cx="5.62" cy="7.50" r="2.50" fill="#c2cbc4"/>
+    <circle cx="5.62" cy="25.00" r="2.50" fill="#c2cbc4"/>
+    <circle cx="5.62" cy="42.50" r="2.50" fill="#c2cbc4"/>
+    <rect x="16.25" y="6.25" width="28.75" height="6.25" fill="#2f6b4f"/>
+    <rect x="16.25" y="17.50" width="28.75" height="6.25" fill="#2f6b4f"/>
+    <rect x="16.25" y="28.75" width="10.93" height="6.25" fill="#8a5a12"/>
+    <rect x="34.08" y="28.75" width="10.93" height="6.25" fill="#8a5a12"/>
+    <rect x="16.25" y="38.75" width="28.75" height="6.25" fill="#2f6b4f"/>
+    </g>
+    <line x1="316" y1="27" x2="316" y2="89" stroke="#1f4e79" stroke-width="1"/>
+    <line x1="700" y1="27" x2="700" y2="89" stroke="#1f4e79" stroke-width="1"/>
+  </g>
+  <g fill="#14181c" transform="translate(130,38)">
+    <path d="M2.2 46.0V18.4H7.17V21.43H8.09Q8.39 19.65 9.3 18.96Q10.22 18.28 11.7 18.28Q12.19 18.28 12.66 18.31Q13.14 18.34 13.41 18.36V22.21H11.76Q9.47 22.21 8.48 22.97Q7.49 23.73 7.17 25.22V46.0Z"/>
+    <path d="M22.34 46.38Q18.42 46.38 16.66 44.78Q14.9 43.18 14.71 39.5Q14.66 38.17 14.64 36.28Q14.62 34.4 14.62 32.3Q14.62 30.21 14.64 28.28Q14.66 26.35 14.71 24.97Q14.94 21.22 16.7 19.62Q18.45 18.02 22.29 18.02Q26.07 18.02 27.78 19.59Q29.48 21.16 29.66 24.78Q29.68 25.39 29.7 26.72Q29.72 28.04 29.7 29.73Q29.69 31.41 29.61 33.09H19.6Q19.6 34.77 19.63 36.49Q19.67 38.21 19.69 40.0Q19.74 41.45 20.34 42.02Q20.95 42.59 22.32 42.59Q23.6 42.59 24.15 42.02Q24.71 41.45 24.78 40.0Q24.82 39.3 24.82 38.24Q24.82 37.18 24.78 35.9H29.61Q29.67 36.53 29.69 37.6Q29.71 38.66 29.66 39.5Q29.48 43.18 27.81 44.78Q26.14 46.38 22.34 46.38ZM19.6 29.54H24.82Q24.83 28.4 24.83 27.32Q24.83 26.24 24.81 25.43Q24.8 24.61 24.78 24.25Q24.71 22.94 24.14 22.37Q23.56 21.81 22.29 21.81Q20.92 21.81 20.33 22.37Q19.74 22.94 19.69 24.25Q19.67 25.65 19.64 26.96Q19.62 28.26 19.6 29.54Z"/>
+    <path d="M42.27 28.41Q42.3 27.82 42.31 27.02Q42.33 26.21 42.31 25.45Q42.3 24.69 42.29 24.25Q42.24 22.88 41.65 22.34Q41.07 21.8 39.75 21.8Q38.4 21.8 37.82 22.34Q37.23 22.88 37.18 24.25Q37.14 26.3 37.11 28.26Q37.09 30.22 37.09 32.15Q37.09 34.08 37.11 36.02Q37.14 37.96 37.18 40.0Q37.23 41.46 37.83 42.03Q38.44 42.59 39.81 42.59Q41.09 42.59 41.67 42.03Q42.24 41.46 42.29 40.0Q42.32 39.28 42.32 38.23Q42.33 37.18 42.27 35.91H47.12Q47.17 36.54 47.19 37.6Q47.21 38.66 47.16 39.5Q47.01 43.18 45.3 44.78Q43.6 46.39 39.81 46.39Q35.92 46.39 34.16 44.78Q32.39 43.18 32.21 39.5Q32.16 38.17 32.14 36.28Q32.12 34.39 32.12 32.3Q32.12 30.21 32.14 28.28Q32.16 26.35 32.21 24.97Q32.44 21.22 34.18 19.62Q35.92 18.01 39.75 18.01Q43.59 18.01 45.31 19.59Q47.03 21.16 47.16 24.79Q47.2 25.62 47.19 26.69Q47.17 27.76 47.12 28.41Z"/>
+    <path d="M54.74 46.33Q52.1 46.33 50.85 44.93Q49.6 43.54 49.34 40.42Q49.31 39.91 49.3 39.32Q49.29 38.72 49.32 38.23Q49.45 36.49 50.04 35.17Q50.62 33.86 51.86 32.82Q53.1 31.78 55.2 30.85Q56.31 30.33 57.42 29.91Q58.53 29.49 59.69 29.11V24.4Q59.69 23.09 59.18 22.45Q58.67 21.81 57.24 21.81Q56.03 21.81 55.49 22.34Q54.94 22.88 54.88 24.25Q54.85 24.68 54.84 25.46Q54.83 26.24 54.84 27.06Q54.85 27.87 54.88 28.41H50.04Q50.02 27.83 49.99 26.73Q49.97 25.62 49.99 24.78Q50.09 22.41 50.82 20.92Q51.56 19.42 53.14 18.72Q54.73 18.02 57.39 18.02Q60.15 18.02 61.73 18.79Q63.31 19.56 63.97 21.21Q64.63 22.87 64.63 25.52L64.6 46.0H59.64V43.27H58.95Q58.29 44.8 57.35 45.56Q56.41 46.33 54.74 46.33ZM56.69 42.69Q57.73 42.69 58.48 42.1Q59.23 41.5 59.67 40.44V32.58Q58.86 32.82 58.05 33.16Q57.25 33.5 56.42 34.03Q55.16 34.79 54.73 35.84Q54.29 36.89 54.23 38.23Q54.21 38.66 54.22 39.12Q54.22 39.58 54.24 40.04Q54.36 41.32 54.99 42.01Q55.61 42.69 56.69 42.69Z"/>
+    <path d="M68.01 46.0V9.2H72.98V46.0Z"/>
+    <path d="M76.47 46.0V9.2H81.44V46.0Z"/>
+  </g>
+  <g font-family="Archivo,Helvetica,Arial,sans-serif" font-weight="700" font-size="11" letter-spacing="1.1" fill="#1f4e79">
+    <text x="332" y="50">GO 1.25 · v1.1.0 · MIT</text>
+    <text x="716" y="50">MEASURED, ON 143 SESSIONS · 1.52 GB</text>
+  </g>
+  <g font-family="'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="13" fill="#14181c">
+    <text x="332" y="74">github.com/mayberuk/recall</text>
+    <text x="716" y="74" fill="#2f6b4f">30 ms typical · 93 ms with tool output</text>
+  </g>
+  <g transform="translate(1048,39)">
+    <g filter="url(#brokenink)">
+      <rect width="150" height="38" fill="#bd1e61"/>
+      <rect x="3" y="3" width="144" height="32" fill="none" stroke="#edefe9" stroke-width="1.5"/>
+    </g>
+    <text x="75.0" y="23.7" text-anchor="middle" font-family="Archivo,Helvetica,Arial,sans-serif"
+      font-weight="700" font-size="13" letter-spacing="1.6" fill="#edefe9">LOCAL ONLY</text>
+  </g>
+  <g font-family="'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" transform="translate(64,105)">
+<text xml:space="preserve" x="0" y="15" font-size="14" font-weight="700" fill="#14181c">$ recall find idempotency</text><text xml:space="preserve" x="0" y="36" font-size="14" font-weight="400" fill="#14181c">2 sessions · 5 hits for "idempotency"</text><text xml:space="preserve" x="0" y="57" font-size="14" font-weight="700" fill="#1f4e79">6e2b8d15-4c70-4a93-b8e1-05d7c2914f63  2026-06-03  github.com/acme/payments  hotfix/dedupe  4 hits in 3 turns of 6 turns</text><text xml:space="preserve" x="0" y="78" font-size="14" font-weight="400" fill="#14181c">  human      Duplicate charges again. Two merchants hit the same «idempotenc»y key and one of them saw the other’s receipt. How do we…</text><text xml:space="preserve" x="0" y="99" font-size="14" font-weight="400" fill="#14181c">  assistant  Scope the «idempotenc»y key per merchant, never globally. The key is a string the… ×2</text>
+    <line x1="0" y1="111" x2="1152" y2="111" stroke="#1f4e79" stroke-width="0.75" stroke-dasharray="2,3" opacity=".6"/>
+<text xml:space="preserve" x="0" y="129" font-size="12.5" fill="#4b5760">── 3 sessions · 3 searched · conversation only — tool output NOT searched (--results)</text><text xml:space="preserve" x="0" y="146" font-size="12.5" fill="#4b5760">── live to 2026-05-12 · archived before that · refreshed just now</text><text xml:space="preserve" x="0" y="163" font-size="12.5" fill="#4b5760">── scanned 3.0 KB · 14 turns · 6 ms</text><text xml:space="preserve" x="0" y="180" font-size="12.5" fill="#4b5760">── 1.0 KB · ~264 tokens</text>
+  </g>
+</svg>

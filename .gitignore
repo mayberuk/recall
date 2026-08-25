@@ -2,6 +2,10 @@
 *.test
 .DS_Store
 
+# Impeccable's working state. The design record it produces (DESIGN.md) is
+# documentation and is committed; this directory is the tool's own scratch.
+/.impeccable/
+
 .claude/
 /logs/
 /bench/corpus/

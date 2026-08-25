@@ -1,0 +1,282 @@
+/* ── recall · Deck Log ────────────────────────────────────────────────
+   The page is a length of continuous-feed ledger stock: sprocket strips
+   down both edges, green-bar banding on every printed block, perforated
+   tears between entries. Four inks, each with a job — blue is structure,
+   green is what it found, ochre is what it skipped, rose is what you act
+   on. Dark is the same run read under a chart lamp on night watch.
+
+   Texture is the stock itself, never decoration: paper tooth over the
+   whole sheet, a line screen inside the green bars, a fold crease at
+   every perforation, and broken ink on anything a rubber stamp made. */
+
+:root{
+  --stock:#e3e7e1; --stock-2:#edefe9; --stock-3:#d3dad4;
+  --rule:#1f4e79; --rule-faint:rgba(31,78,121,.28); --rule-hair:rgba(31,78,121,.15);
+  --ink:#14181c; --ink-2:#4b5760; --ink-ghost:rgba(20,24,28,.36);
+  --stamp:#bd1e61; --stamp-wash:rgba(189,30,97,.12);
+  --ledger:#2f6b4f; --ledger-band:rgba(47,107,79,.14); --ledger-wash:rgba(47,107,79,.13);
+  --ledger-screen:rgba(47,107,79,.075); --ledger-ink:#2a6047;
+  --carbon:#8a5a12; --carbon-wash:rgba(138,90,18,.12);
+  --field-bg:#1f4e79; --field-ink:#edefe9; --field-mute:rgba(237,239,233,.82);
+  --hole:#c2cbc4;
+  --crease-lo:rgba(31,78,121,.07); --crease-hi:rgba(255,255,255,.55);
+
+  /* paper tooth. Grey noise at a fixed alpha — one asset, two densities. */
+  --grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='170' height='170'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='discrete' tableValues='1'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='170' height='170' filter='url(%23g)' opacity='.07'/%3E%3C/svg%3E");
+  /* broken ink: a rubber stamp never lays down a solid field. */
+  --ink-break:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='k'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.62' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 7 0 0 0 -1.42'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23k)'/%3E%3C/svg%3E");
+
+  --display:"Big Shoulders Display",ui-sans-serif,system-ui,sans-serif;
+  --body:"Archivo",ui-sans-serif,system-ui,sans-serif;
+  --data:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --feed:clamp(0px,3vw,34px);
+  --gut:clamp(1.1rem,3vw,2.4rem);
+  --nudge:180ms cubic-bezier(.16,.84,.3,1);
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --stock:#141a1d; --stock-2:#1b2226; --stock-3:#0e1315;
+    --rule:#5b93c4; --rule-faint:rgba(91,147,196,.32); --rule-hair:rgba(91,147,196,.17);
+    --ink:#e2e7e4; --ink-2:#94a3a8; --ink-ghost:rgba(226,231,228,.36);
+    --stamp:#ff6fa5; --stamp-wash:rgba(255,111,165,.15);
+    --ledger:#6ecfa0; --ledger-band:rgba(110,207,160,.10); --ledger-wash:rgba(110,207,160,.13);
+    --ledger-screen:rgba(110,207,160,.055); --ledger-ink:#6ecfa0;
+    --carbon:#d9a441; --carbon-wash:rgba(217,164,65,.12);
+    --field-bg:#16344f; --field-ink:#dfe6ea; --field-mute:#a9bccb;
+    --hole:#080c0d;
+    --crease-lo:rgba(0,0,0,.3); --crease-hi:rgba(145,183,214,.09);
+    --grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='170' height='170'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='discrete' tableValues='1'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='170' height='170' filter='url(%23g)' opacity='.1'/%3E%3C/svg%3E");
+  }
+}
+
+@font-face{font-family:"Big Shoulders Display";src:url(/recall/fonts/bigshoulders.woff2)format("woff2");font-weight:400 800;font-display:swap}
+@font-face{font-family:"Archivo";src:url(/recall/fonts/archivo.woff2)format("woff2");font-weight:400 700;font-display:swap}
+@font-face{font-family:"JetBrains Mono";src:url(/recall/fonts/jetbrainsmono.woff2)format("woff2");font-weight:400 700;font-display:swap}
+
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  position:relative;margin:0;padding:0 var(--feed);background:var(--stock);color:var(--ink);
+  font-family:var(--body);font-size:clamp(.97rem,.3vw + .9rem,1.05rem);line-height:1.58;
+  font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;
+}
+
+/* the paper's own tooth, over ink and stock alike, moving with the sheet */
+.grain{position:absolute;inset:0;z-index:5;pointer-events:none;background-image:var(--grain)}
+
+/* the tractor-feed strips: this page came off a printer, and the holes
+   travel with the paper rather than staying pinned to the window */
+.feed{
+  position:absolute;top:0;bottom:0;width:var(--feed);z-index:4;pointer-events:none;
+  background-color:var(--stock);
+  background-image:radial-gradient(circle 4.5px at 50% 13px,var(--hole) 99%,transparent 100%);
+  background-size:100% 30px;background-repeat:repeat-y;
+}
+.feed.l{left:0;border-right:1px dashed var(--rule-faint)}
+.feed.r{right:0;border-left:1px dashed var(--rule-faint)}
+@media (max-width:44rem){ .feed{display:none} body{padding:0} }
+
+::selection{background:var(--stamp-wash);color:var(--ink)}
+:root{caret-color:var(--stamp);scrollbar-color:var(--rule-faint) transparent;scrollbar-width:thin}
+::-webkit-scrollbar{width:11px;height:11px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--rule-faint);border:3px solid var(--stock)}
+::-webkit-scrollbar-thumb:hover{background:var(--rule)}
+:focus-visible{outline:2px solid var(--stamp);outline-offset:3px}
+a{color:inherit;text-decoration-color:var(--rule-faint);text-underline-offset:.22em;text-decoration-thickness:1px;
+  transition:text-decoration-color var(--nudge)}
+a:hover{text-decoration-color:var(--stamp)}
+
+.wrap{max-width:72rem;margin:0 auto;padding:0 var(--gut)}
+.cap{font-family:var(--body);font-size:.645rem;font-weight:600;letter-spacing:.19em;text-transform:uppercase;color:var(--ink-2);margin:0}
+.data{font-family:var(--data);font-size:.78rem;letter-spacing:-.01em}
+.hl{color:var(--stamp)} .hl-g{color:var(--ledger)}
+.num{font-family:var(--display);font-weight:700;color:var(--stamp);font-size:1.32em;letter-spacing:-.02em}
+
+/* ── masthead: a form header, filled in ───────────────────── */
+.mast{background:var(--stock-2);border-bottom:3px double var(--rule)}
+.mast .wrap{display:flex;align-items:center;gap:var(--gut);justify-content:space-between;padding-block:.8rem;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:.55rem}
+.brand svg{display:block;width:25px;height:25px;flex:none}
+.brand b{font-family:var(--display);font-weight:700;font-size:2rem;letter-spacing:-.02em;line-height:1}
+.formno{font-family:var(--data);font-size:.68rem;color:var(--ink-2);margin:0}
+
+/* ── hero: the headline at full strength, then the proof ──── */
+.hero{padding-block:clamp(2.2rem,6vw,4.4rem) clamp(1.6rem,3vw,2.4rem)}
+h1{
+  font-family:var(--display);font-weight:700;
+  font-size:clamp(3.4rem,12.4vw,8.4rem);line-height:.84;letter-spacing:-.04em;
+  margin:0 0 1.3rem;max-width:15ch;text-wrap:balance;
+}
+h1 em{font-style:normal;color:var(--stamp)}
+.lede{font-size:clamp(1.06rem,.6vw + .95rem,1.3rem);color:var(--ink-2);max-width:54ch;margin:0 0 1.7rem;line-height:1.48}
+.heroGrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,17rem);gap:var(--gut) clamp(1.4rem,4vw,3rem);align-items:end}
+
+.reg{border-top:2px solid var(--rule);margin:0}
+.reg div{display:grid;grid-template-columns:1fr auto;gap:.8rem;align-items:baseline;padding:.44rem .3rem .44rem 0;
+  border-bottom:1px solid var(--rule-hair);transition:background-color var(--nudge)}
+.reg div:hover{background:var(--rule-hair)}
+.reg dt{margin:0} .reg dd{margin:0;font-family:var(--data);font-size:.78rem;color:var(--ledger);font-weight:500}
+.reg dd.none{color:var(--ink-2)}
+
+.entry{position:relative;display:flex;border:1px solid var(--rule);background:var(--stock-2);max-width:44rem}
+.entry code{font-family:var(--data);font-size:.84rem;padding:.78rem .9rem;overflow-x:auto;white-space:nowrap;flex:1}
+.entry button{font:inherit;font-family:var(--body);font-size:.66rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
+  border:0;border-left:1px solid var(--rule);background:transparent;color:var(--ink-2);padding:0 1rem;cursor:pointer;flex:none;
+  transition:background-color var(--nudge),color var(--nudge)}
+.entry button:hover{background:var(--stamp-wash);color:var(--ink)}
+.entry button:active{background:var(--stamp);color:var(--stock-2)}
+.entry button[disabled]{cursor:default;color:var(--ink-ghost);background:transparent}
+.entry .stamp{position:absolute;right:.5rem;top:50%;pointer-events:none;font-family:var(--display);font-weight:700;
+  font-size:1rem;letter-spacing:.07em;text-transform:uppercase;color:var(--stamp);border:2px solid var(--stamp);
+  padding:.14rem .48rem;opacity:0;transform-origin:100% 50%;transform:translateY(-50%) rotate(-7deg) scale(1.55);
+  -webkit-mask-image:var(--ink-break);mask-image:var(--ink-break)}
+.entry.done .stamp{animation:press .4s cubic-bezier(.16,.84,.3,1) forwards}
+
+/* the query line is the control: a form's option row, not a tab bar.
+   The live term is inverted, because rank on this page is inversion. */
+.ask{display:flex;align-items:center;gap:.42rem;flex-wrap:wrap;margin:0 0 .55rem;
+  font-family:var(--data);font-size:.78rem;color:var(--ink-2)}
+.ask .from{color:var(--ink-2);font-size:.71rem;margin-left:.35rem}
+.q{font:inherit;font-family:var(--data);font-size:.78rem;border:1px solid var(--rule-faint);
+  background:transparent;color:var(--ink-2);padding:.14rem .52rem;cursor:pointer;
+  transition:color var(--nudge),border-color var(--nudge),background-color var(--nudge)}
+.q:hover{border-color:var(--rule);color:var(--ink)}
+.q.on{background:var(--ink);color:var(--stock);border-color:var(--ink);cursor:default}
+
+/* ── the printout: green-bar stock ────────────────────────── */
+.sheet{border:1px solid var(--rule);background:var(--stock-2);overflow-x:auto;position:relative}
+.sheet table{border-collapse:collapse;width:100%;min-width:42rem;font-family:var(--data);font-size:.77rem}
+.sheet thead th{background:var(--rule);color:var(--stock-2);font-family:var(--body);font-size:.62rem;font-weight:700;
+  letter-spacing:.16em;text-transform:uppercase;text-align:left;padding:.5rem .8rem;white-space:nowrap}
+.sheet td{padding:.4rem .8rem;vertical-align:top;transition:background-color 90ms linear}
+/* green bar, printed: the band carries a fine line screen, not a flat fill */
+.sheet tbody tr:nth-child(4n+1) td,.sheet tbody tr:nth-child(4n+2) td{
+  background-color:var(--ledger-band);
+  background-image:repeating-linear-gradient(to bottom,var(--ledger-screen) 0 1px,transparent 1px 4px);
+}
+.sheet tr.head td{border-top:1px solid var(--rule-hair);font-weight:700}
+.sheet tr.head.mark td{background:var(--ink);color:var(--stock)}
+.sheet td.rem{white-space:normal;color:var(--ink-2);font-size:.75rem}
+.sheet tr.head.mark + tr td,.sheet tr.head.mark + tr + tr td{background:var(--stamp-wash)}
+/* a finger run down the printout */
+.sheet tbody tr:hover td{background-color:var(--rule-hair)}
+.sheet tbody tr.head.mark:hover td{background-color:var(--ink)}
+.who{font-family:var(--body);font-size:.58rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ledger)}
+.who.me{color:var(--stock-2);background:var(--stamp);padding:.1rem .35rem;display:inline-block}
+mark{background:var(--ink);color:var(--stock);padding:0 .08em}
+tr.head.mark mark,tr.mark mark{background:var(--stamp);color:var(--stock-2)}
+
+/* the carriage: a print head that lays the sheet down line by line and
+   retracts off the bottom edge. Armed by script only — without motion the
+   page is simply already printed. */
+.carriage{position:absolute;left:0;right:0;bottom:0;min-width:42rem;height:0;z-index:2;pointer-events:none;
+  background:var(--stock-2);border-top:2px solid var(--rule)}
+.miss .carriage{background:var(--ledger-wash)}
+.armed .carriage{height:100%}
+
+/* the stamp that lands on the found entry */
+.landed{position:absolute;right:clamp(.6rem,3vw,2.4rem);top:clamp(2.6rem,7vw,3.4rem);z-index:3;
+  font-family:var(--display);font-weight:700;font-size:clamp(1.1rem,2.8vw,1.75rem);letter-spacing:.09em;text-transform:uppercase;
+  color:var(--stamp);border:3px solid var(--stamp);padding:.24rem .7rem;
+  opacity:0;transform:rotate(-8deg) scale(1.7);pointer-events:none;
+  -webkit-mask-image:var(--ink-break);mask-image:var(--ink-break)}
+.landed.on{animation:press .52s cubic-bezier(.16,.84,.3,1) forwards}
+@keyframes press{
+  0%{opacity:0} 55%{opacity:1;transform:rotate(-8deg) scale(.93)}
+  100%{opacity:.9;transform:rotate(-8deg) scale(1)}
+}
+@media (prefers-reduced-motion:reduce){
+  .landed,.entry.done .stamp{animation:none;opacity:.9;transform:rotate(-8deg) scale(1)}
+  .entry.done .stamp{transform:translateY(-50%) rotate(-7deg) scale(1)}
+  .carriage{display:none}
+  *{transition-duration:1ms !important}
+}
+
+/* ── entries flow down one sheet, torn apart by perforations ─ */
+section{position:relative;padding-block:clamp(2.4rem,5vw,3.8rem)}
+/* the tear line is perforated, and the fold it makes catches the light */
+section::before{
+  content:"";position:absolute;left:0;right:0;top:-13px;height:26px;pointer-events:none;
+  background:
+    radial-gradient(circle .95px at 4.5px 13px,var(--rule-faint) 96%,transparent 100%) 0 0/9px 100% repeat-x,
+    linear-gradient(to bottom,transparent 0,var(--crease-lo) 48%,var(--crease-hi) 52%,transparent 100%);
+}
+section.flush{padding-top:0}
+section.flush::before{content:none}
+h2{font-family:var(--display);font-weight:700;font-size:clamp(2.2rem,5.6vw,4rem);line-height:.94;
+  letter-spacing:-.035em;margin:0 0 .6rem;max-width:18ch;text-wrap:balance}
+section > .wrap > p:not(.ask){color:var(--ink-2);max-width:56ch;margin:0 0 1.6rem}
+
+.miss{position:relative;border:1px solid var(--rule-hair);border-top:3px solid var(--ledger);background:var(--ledger-wash);overflow:hidden;
+  padding:.9rem 1rem;font-family:var(--data);font-size:.77rem;overflow-x:auto;max-width:54rem}
+.miss b{color:var(--ledger-ink);font-weight:700}
+
+.pressed{display:inline-block;font-family:var(--display);font-weight:700;font-size:.9rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--stamp);border:2px solid var(--stamp);padding:.16rem .5rem;transform:rotate(-3.5deg);opacity:.9;
+  -webkit-mask-image:var(--ink-break);mask-image:var(--ink-break)}
+.pressed.good{color:var(--ledger);border-color:var(--ledger)}
+.pressed.warn{color:var(--carbon);border-color:var(--carbon)}
+
+.spine{border-block:2px solid var(--rule);padding:1rem 0 .85rem}
+.spine ol{list-style:none;display:grid;grid-auto-flow:column;grid-auto-columns:1fr;margin:.5rem 0 0;padding:0;align-items:end;gap:3px}
+.spine li{border-left:1px solid var(--rule-faint);padding-left:.4rem;min-height:3rem;display:flex;flex-direction:column;justify-content:flex-end;gap:.3rem}
+.spine li b{display:block;background:var(--rule-hair);height:5px;transform-origin:50% 100%}
+.spine li.on b{background:var(--ledger);height:22px}
+.spine li span{font-family:var(--data);font-size:.66rem;color:var(--ink-2)}
+.spine li.on span{color:var(--ledger);font-weight:700}
+
+.field{background:var(--field-bg);color:var(--field-ink);padding:clamp(1.5rem,3.4vw,2.6rem)}
+.field h2{color:var(--field-ink);margin-bottom:.5rem}
+.field p{color:var(--field-mute)}
+.field .entry{border-color:var(--field-mute);background:rgba(0,0,0,.24)}
+.field .entry code{color:var(--field-ink)}
+.pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(17rem,1fr));gap:0 clamp(1.2rem,3.4vw,2.6rem)}
+.pair > div{border-top:1px solid var(--rule-faint);padding-top:.8rem}
+.pair h3{font-family:var(--body);font-size:.94rem;font-weight:700;margin:0 0 .25rem}
+.pair p{color:var(--ink-2);margin:0 0 1.3rem;font-size:.92rem;max-width:40ch}
+.field .pair > div{border-top-color:var(--field-mute)}
+.field .pair h3{color:var(--field-ink)} .field .pair p{color:var(--field-mute)}
+
+.cov{border:1px solid var(--rule-hair);border-top:3px solid var(--carbon);background:var(--carbon-wash);padding:.35rem 0;max-width:54rem}
+.cov button{display:block;width:100%;text-align:left;font:inherit;font-family:var(--data);font-size:.77rem;
+  background:transparent;border:0;color:var(--ink-2);padding:.34rem 1rem;cursor:pointer;
+  transition:color var(--nudge),background-color var(--nudge)}
+/* the line feeds forward under a finger; the sheet under it stays put */
+.cov button span{display:inline-block;transition:transform var(--nudge)}
+.cov button:hover{color:var(--ink);background:var(--carbon-wash)}
+.cov button:hover span,.cov button[aria-expanded="true"] span{transform:translateX(6px)}
+.cov button[aria-expanded="true"]{background:var(--carbon);color:var(--stock-2)}
+.cov p{margin:0;padding:.5rem 1rem .7rem;color:var(--ink-2);font-size:.88rem;max-width:62ch}
+.cov p[hidden]{display:none}
+
+.cols{border-top:2px solid var(--rule)}
+.cols > div{display:grid;grid-template-columns:minmax(7rem,15rem) minmax(0,1fr) minmax(0,7rem);gap:1rem;
+  padding:.7rem .3rem;border-bottom:1px solid var(--rule-hair);align-items:baseline;
+  transition:background-color var(--nudge)}
+.cols > div:hover{background:var(--rule-hair)}
+.cols b{font-weight:700} .cols span{color:var(--ink-2);font-size:.9rem}
+.cols i{font-style:normal;font-family:var(--display);font-weight:700;font-size:1.5rem;color:var(--stamp);text-align:right;letter-spacing:-.02em}
+
+footer{position:relative;padding-block:2rem 3rem}
+footer::before{
+  content:"";position:absolute;left:0;right:0;top:-13px;height:26px;pointer-events:none;
+  background:
+    radial-gradient(circle .95px at 4.5px 13px,var(--rule-faint) 96%,transparent 100%) 0 0/9px 100% repeat-x,
+    linear-gradient(to bottom,transparent 0,var(--crease-lo) 48%,var(--crease-hi) 52%,transparent 100%);
+}
+footer .wrap{display:flex;gap:var(--gut);justify-content:space-between;flex-wrap:wrap;align-items:flex-end}
+footer dl{margin:0;display:flex;gap:1.6rem;flex-wrap:wrap}
+footer dd{margin:.08rem 0 0;font-family:var(--data);font-size:.76rem}
+
+@media (max-width:56rem){
+  .heroGrid{grid-template-columns:minmax(0,1fr)}
+  .cols > div{grid-template-columns:minmax(0,1fr);gap:.15rem}
+  .cols i{text-align:left}
+}
+
+/* below-fold elements that a script arms before animating */
+section.bleed{padding-block:0}
+.miss pre{margin:0;font:inherit;white-space:pre-wrap}
+.spine.armed li b{transform:scaleY(0)}
+.pressed.armed{opacity:0}

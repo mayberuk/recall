@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" shape-rendering="crispEdges">
+  <title>recall</title>
+  <!-- The Excluded Register: a ruled ledger cell, sprocket holes down the left
+       rail, three rows found and one row broken. The break is geometry, not a
+       hue, so the mark reads the same in colour, in one ink, and at 16px. -->
+    <rect width="32.00" height="32.00" fill="#141a1d"/>
+    <rect x="0.40" y="0.40" width="31.20" height="31.20" fill="none" stroke="#5b93c4" stroke-width="1.00"/>
+    <line x1="7.20" y1="0" x2="7.20" y2="32.00" stroke="#5b93c4" stroke-width="1.00"/>
+    <circle cx="3.60" cy="4.80" r="1.60" fill="#080c0d"/>
+    <circle cx="3.60" cy="16.00" r="1.60" fill="#080c0d"/>
+    <circle cx="3.60" cy="27.20" r="1.60" fill="#080c0d"/>
+    <rect x="10.40" y="4.00" width="18.40" height="4.00" fill="#6ecfa0"/>
+    <rect x="10.40" y="11.20" width="18.40" height="4.00" fill="#6ecfa0"/>
+    <rect x="10.40" y="18.40" width="6.99" height="4.00" fill="#d9a441"/>
+    <rect x="21.81" y="18.40" width="6.99" height="4.00" fill="#d9a441"/>
+    <rect x="10.40" y="24.80" width="18.40" height="4.00" fill="#6ecfa0"/>
+</svg>
