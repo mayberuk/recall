@@ -1,14 +1,21 @@
 ---
-// The form header, filled in. Shared by both pages so the nav and the version
+// The form header, filled in. Shared by every page so the nav and the version
 // line cannot drift apart; `current` is the only thing that differs.
+import { siGithub } from 'simple-icons';
+import repo from '../data/repo.json';
+
 const { current } = Astro.props;
 const base = import.meta.env.BASE_URL.replace(/\/+$/, '');
 const nav = [
   { href: `${base}/`, label: 'Overview', key: 'index' },
   { href: `${base}/docs/`, label: 'Documentation', key: 'docs' },
   { href: `${base}/bench/`, label: 'Benchmarks', key: 'bench' },
-  { href: 'https://github.com/mayberuk/recall', label: 'Source', key: 'source' },
 ];
+
+// A count is read at build time and baked in, so it is a snapshot rather than
+// a live number. Below ten it says nothing rather than something small: an
+// absent number is honest, a rendered zero is just sad.
+const stars = repo.stars >= 10 ? repo.stars.toLocaleString('en-US') : '';
 ---
 <header class="mast">
   <div class="wrap">
@@ -36,6 +43,12 @@ const nav = [
           <a href={n.href} aria-current={n.key === current ? 'page' : undefined}>{n.label}</a>
         ))}
       </nav>
+      <a class="star" href="https://github.com/mayberuk/recall"
+         rel="noopener" aria-label="Star recall on GitHub">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d={siGithub.path} /></svg>
+        <b>Star</b>
+        {stars && <span class="starN">{stars}</span>}
+      </a>
       <p class="formno">v1.1.0 · MIT</p>
     </div>
   </div>

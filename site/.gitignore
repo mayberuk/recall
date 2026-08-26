@@ -9,3 +9,4 @@ public/bench.md
 public/llms-full.txt
 public/sitemap*.xml
 src/data/bench.json
+src/data/repo.json

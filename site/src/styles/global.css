@@ -412,19 +412,33 @@ p.after{margin:1rem 0 0}
    on a sheet that runs on four inks, and the point of the row is the list,
    not the logos. */
 .agentsCap{margin:2.2rem 0 .55rem;color:var(--field-mute)}
-.agents{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;
+.agentsFoot{margin:.7rem 0 0;color:var(--field-mute);font-size:.7rem;max-width:62ch;line-height:1.6}
+/* Seven cells in a block that holds eight, which on a ruled form is what a
+   list of seven looks like. Every cell is the control: Cursor's opens Cursor,
+   the rest put the command on the clipboard. */
+.agents{list-style:none;margin:0;padding:0;display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
   border-top:1px solid var(--field-mute);border-left:1px solid var(--field-mute)}
-.agents li{flex:1 1 9.5rem;display:flex;align-items:center;gap:.6rem;padding:.72rem .85rem;
-  border-right:1px solid var(--field-mute);border-bottom:1px solid var(--field-mute);
-  transition:background-color var(--nudge)}
-.agents li:hover{background:rgba(0,0,0,.2)}
-.agents svg{width:19px;height:19px;flex:none;fill:var(--field-ink);opacity:.8;
+.agents li{border-right:1px solid var(--field-mute);border-bottom:1px solid var(--field-mute)}
+.agentGo{width:100%;display:flex;align-items:center;gap:.62rem;padding:.7rem .8rem;
+  font:inherit;text-align:left;background:transparent;border:0;color:inherit;
+  text-decoration:none;cursor:pointer;transition:background-color var(--nudge)}
+.agentGo:hover{background:rgba(0,0,0,.22)}
+.agentGo > svg{width:19px;height:19px;flex:none;fill:var(--field-ink);opacity:.8;
   transition:opacity var(--nudge)}
-.agents li:hover svg{opacity:1}
-.agents span{min-width:0}
-.agents b{display:block;font-size:.86rem;font-weight:700;color:var(--field-ink);line-height:1.2}
+.agentGo:hover > svg{opacity:1}
+.agentGo span{min-width:0;flex:1}
+.agents b{display:block;font-size:.86rem;font-weight:700;color:var(--field-ink);line-height:1.25}
 .agents code{display:block;font-family:var(--data);font-size:.62rem;color:var(--field-mute);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.5}
+.agentMark{flex:none;font-style:normal;font-size:.95rem;line-height:1;color:var(--field-mute);
+  opacity:.85;transition:opacity var(--nudge),transform var(--nudge)}
+.agentGo:hover .agentMark{opacity:1;transform:translateY(-1px)}
+.agentGo.ok{background:rgba(0,0,0,.28)}
+.agentGo.ok code{color:var(--field-ink)}
+.agentGo.ok .agentMark{opacity:1}
+@media (max-width:60rem){ .agents{grid-template-columns:repeat(2,minmax(0,1fr))} }
+@media (max-width:30rem){ .agents{grid-template-columns:minmax(0,1fr)} }
 
 /* ── figures ───────────────────────────────────────────────────────────*/
 .figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(13rem,100%),1fr));gap:0;margin:0 0 2rem;
@@ -551,3 +565,16 @@ p.after{margin:1rem 0 0}
 .microCap{margin:1.3rem 0 .4rem;color:var(--ledger-ink)}
 .foot code{font-family:var(--data);font-size:.95em;color:var(--ink)}
 .agentsCap code{font-family:var(--data);font-size:.92em;letter-spacing:0;text-transform:none}
+
+/* ── the star: a form field with a button in it, like the install entry ─*/
+.star{display:inline-flex;align-items:center;gap:.44rem;flex:none;text-decoration:none;
+  border:1px solid var(--rule-faint);padding:.24rem .6rem;
+  transition:border-color var(--nudge),background-color var(--nudge)}
+.star:hover{border-color:var(--rule);background:var(--stamp-wash)}
+.star svg{width:15px;height:15px;fill:var(--ink-2);transition:fill var(--nudge)}
+.star:hover svg{fill:var(--ink)}
+.star b{font-family:var(--body);font-size:.645rem;font-weight:600;letter-spacing:.19em;
+  text-transform:uppercase;color:var(--ink-2);transition:color var(--nudge)}
+.star:hover b{color:var(--ink)}
+.starN{font-family:var(--data);font-size:.68rem;color:var(--ledger-ink);
+  padding-left:.44rem;border-left:1px solid var(--rule-hair)}
