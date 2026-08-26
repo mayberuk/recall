@@ -6,10 +6,45 @@ import repo from '../data/repo.json';
 
 const { current } = Astro.props;
 const base = import.meta.env.BASE_URL.replace(/\/+$/, '');
+/* Drawn here rather than pulled from an icon set, because every set draws
+   rounded strokes on a 24-unit grid and this masthead is built out of the
+   same crisp-edged rectangles the brand mark is: a printed sheet with one
+   row marked, a bound manual, and bars on a baseline. They inherit
+   currentColor, so the nav's hover and current-page states carry them. */
 const nav = [
-  { href: `${base}/`, label: 'Overview', key: 'index' },
-  { href: `${base}/docs/`, label: 'Documentation', key: 'docs' },
-  { href: `${base}/bench/`, label: 'Benchmarks', key: 'bench' },
+  {
+    href: `${base}/`, label: 'Overview', key: 'index',
+    // the printout, with the marked row running edge to edge, which is
+    // exactly what the sheet on that page does to the row it found
+    art: [
+      { x: 3.5, y: 3.5, w: 17, h: 17, o: 1 },
+      { x: 7, y: 7.2, w: 6.4, h: 1.5 },
+      { x: 3.5, y: 10.8, w: 17, h: 3.4 },
+      { x: 7, y: 16.4, w: 6.4, h: 1.5 },
+    ],
+  },
+  {
+    href: `${base}/docs/`, label: 'Documentation', key: 'docs',
+    // a bound manual: a solid spine standing beside the page, so the
+    // silhouette differs from the sheet above rather than only the inside
+    art: [
+      { x: 3.6, y: 3.5, w: 3.4, h: 17 },
+      { x: 8.7, y: 3.5, w: 11.8, h: 17, o: 1 },
+      { x: 11.4, y: 7.4, w: 6.4, h: 1.5 },
+      { x: 11.4, y: 11.2, w: 6.4, h: 1.5 },
+      { x: 11.4, y: 15, w: 4, h: 1.5 },
+    ],
+  },
+  {
+    href: `${base}/bench/`, label: 'Benchmarks', key: 'bench',
+    // bars against a baseline, the same figure the page itself draws
+    art: [
+      { x: 3.6, y: 18.6, w: 16.8, h: 1.8 },
+      { x: 5.2, y: 13, w: 3.6, h: 5.1 },
+      { x: 10.2, y: 9, w: 3.6, h: 9.1 },
+      { x: 15.2, y: 5, w: 3.6, h: 13.1 },
+    ],
+  },
 ];
 
 // A count is read at build time and baked in, so it is a snapshot rather than
@@ -40,7 +75,17 @@ const stars = repo.stars >= 10 ? repo.stars.toLocaleString('en-US') : '';
     <div class="mastEnd">
       <nav class="nav" aria-label="Primary">
         {nav.map(n => (
-          <a href={n.href} aria-current={n.key === current ? 'page' : undefined}>{n.label}</a>
+          <a href={n.href} aria-current={n.key === current ? 'page' : undefined}>
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" shape-rendering="crispEdges">
+              {n.art.map(r => (
+                <rect x={r.x} y={r.y} width={r.w} height={r.h}
+                      fill={r.o ? 'none' : 'currentColor'}
+                      stroke={r.o ? 'currentColor' : undefined}
+                      stroke-width={r.o ? 1.6 : undefined} />
+              ))}
+            </svg>
+            <span>{n.label}</span>
+          </a>
         ))}
       </nav>
       <!-- Hidden until its script runs: a control that cannot change anything

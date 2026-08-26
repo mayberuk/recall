@@ -119,8 +119,24 @@ a:hover{text-decoration-color:var(--stamp)}
 .hl{color:var(--stamp)} .hl-g{color:var(--ledger)}
 .num{font-family:var(--display);font-weight:700;color:var(--stamp);font-size:1.32em;letter-spacing:-.02em}
 
-/* ── masthead: a form header, filled in ───────────────────── */
-.mast{background:var(--stock-2);border-bottom:3px double var(--rule)}
+/* ── masthead: a form header, filled in ─────────────────────
+   Sticky only where it is a single row. Pinning a three-row header to the
+   top of a phone would spend a third of the viewport on navigation, so
+   below that width it scrolls away like any other block. It carries the
+   paper's own grain, because the sheet passing under it does. */
+.mast{position:relative;background:var(--stock-2);border-bottom:3px double var(--rule)}
+.mast::after{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;
+  background-image:var(--grain)}
+.mast .wrap{position:relative;z-index:2}
+/* 65rem is measured, not chosen: the header is one 61px row at and above it
+   and wraps to two below. */
+@media (min-width:65rem){
+  .mast{position:sticky;top:0;z-index:6}
+  /* Every in-page jump has to clear the pinned header, or an anchor lands
+     under it. One declaration covers the contents rail, the heading
+     anchors, and anything a reader types into the address bar. */
+  html{scroll-padding-top:5.2rem}
+}
 .mast .wrap{display:flex;align-items:center;gap:var(--gut);justify-content:space-between;padding-block:.8rem;flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:.55rem}
 .brand svg{display:block;width:25px;height:25px;flex:none}
@@ -314,12 +330,15 @@ section.bleed{padding-block:0}
    column of prose. Every rule and ink is the one the deck log already
    uses; nothing here introduces a fifth. */
 
-.nav{display:flex;gap:1.15rem;flex-wrap:wrap}
-.nav a{font-family:var(--body);font-size:.645rem;font-weight:600;letter-spacing:.19em;text-transform:uppercase;
+.nav{display:flex;gap:1.1rem;flex-wrap:wrap}
+.nav a{display:inline-flex;align-items:center;gap:.42rem;
+  font-family:var(--body);font-size:.645rem;font-weight:600;letter-spacing:.19em;text-transform:uppercase;
   color:var(--ink-2);text-decoration:none;padding-bottom:.24rem;border-bottom:2px solid transparent;
   transition:color var(--nudge),border-color var(--nudge)}
+.nav a svg{width:13px;height:13px;flex:none;opacity:.7;transition:opacity var(--nudge)}
 .nav a:hover{color:var(--ink);border-bottom-color:var(--rule-faint)}
 .nav a[aria-current=page]{color:var(--ink);border-bottom-color:var(--stamp)}
+.nav a:hover svg,.nav a[aria-current=page] svg{opacity:1}
 .mastEnd{display:flex;align-items:center;gap:var(--gut);flex-wrap:wrap}
 .brand{text-decoration:none;color:inherit}
 
@@ -327,6 +346,9 @@ section.bleed{padding-block:0}
   gap:clamp(1.6rem,4vw,3.4rem);align-items:start;padding-block:clamp(1.8rem,4vw,3rem) 0}
 
 .toc{position:sticky;top:1.4rem;border-top:2px solid var(--rule)}
+/* Below the pinned header rather than under it. This has to sit after the
+   rule above, not up with the masthead: same specificity, later wins. */
+@media (min-width:65rem){ .toc{top:5.2rem} }
 .tocCap{padding:.5rem 0 .45rem;border-bottom:1px solid var(--rule-hair)}
 .toc ol{list-style:none;margin:0;padding:0;counter-reset:toc}
 .toc li{counter-increment:toc;border-bottom:1px solid var(--rule-hair)}
