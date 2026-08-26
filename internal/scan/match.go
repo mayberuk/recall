@@ -91,11 +91,19 @@ type term struct {
 type variant struct {
 	needle []byte
 	rare   int
+
+	// synonym marks a needle drawn from the shipped table (newTerm's compile-time
+	// lookup) rather than widen's miss-path substitution. The caller typed the
+	// term this needle stands in for but never typed the needle itself, so unlike
+	// a typed needle it earns a hit only where it stands as its own word — the
+	// fuzzy needle widen adds is harvested from the corpus's own vocabulary on a
+	// miss, a different and safer case this flag keeps out of the rule.
+	synonym bool
 }
 
-func newVariant(text string) variant {
+func newVariant(text string, synonym bool) variant {
 	n := []byte(text)
-	return variant{needle: n, rare: rarestByte(n)}
+	return variant{needle: n, rare: rarestByte(n), synonym: synonym}
 }
 
 type rawTerm struct {
@@ -118,6 +126,9 @@ func compile(q Query) matcher {
 			continue
 		}
 		seen[t.text] = true
+		if len(t.alt) > 0 {
+			m.expanded = true
+		}
 		m.terms = append(m.terms, t)
 	}
 	for _, raw := range q.Not {
@@ -154,7 +165,10 @@ func (m *matcher) widen(exps []Expansion) matcher {
 			}
 			alt := make([]variant, 0, len(e.Variants))
 			for _, v := range e.Variants {
-				alt = append(alt, newVariant(v))
+				// widen's needles come from the corpus's own vocabulary on a
+				// miss, not the synonym table, so they keep the old
+				// any-occurrence rule.
+				alt = append(alt, newVariant(v, false))
 			}
 			out.terms[i].alt = alt
 		}
@@ -171,7 +185,19 @@ func newTerm(r rawTerm, exact bool) term {
 		needle = stem(text)
 	}
 	n := []byte(needle)
-	return term{text: text, needle: n, rare: rarestByte(n), phrase: r.quoted}
+	t := term{text: text, needle: n, rare: rarestByte(n), phrase: r.quoted}
+	// The synonym table is suppressed under the same two conditions stemming
+	// already is: --exact asked for the word as typed, and a quoted phrase is
+	// never read as anything but itself.
+	if !exact && !r.quoted {
+		if syns := synonymsFor(text); len(syns) > 0 {
+			t.alt = make([]variant, 0, len(syns))
+			for _, s := range syns {
+				t.alt = append(t.alt, newVariant(s, true))
+			}
+		}
+	}
+	return t
 }
 
 // splitTerms cuts a query into terms on whitespace, except inside double
@@ -254,7 +280,7 @@ type span struct {
 func (m *matcher) mark(folded []byte, need int) int {
 	found := 0
 	for i := range m.terms {
-		m.carried[i] = m.terms[i].found(folded)
+		m.carried[i] = m.terms[i].satisfied(folded)
 		if m.carried[i] {
 			found++
 			continue
@@ -273,9 +299,59 @@ func (m *matcher) mark(folded []byte, need int) int {
 // before matching so a turn the caller ruled out costs one pass, not two.
 func (m matcher) excluded(folded []byte) bool {
 	for i := range m.exclude {
-		if m.exclude[i].found(folded) {
+		if m.exclude[i].satisfied(folded) {
 			return true
 		}
+	}
+	return false
+}
+
+// satisfied reports whether folded carries this term, through the needle the
+// caller typed or any needle substituted for it. This is the accounting gate —
+// mark and excluded both call it before a single span is collected — so it has
+// to agree with collect's own filter or a term could be marked carried on a
+// match collect would then discard. A typed needle counts wherever it occurs,
+// because the caller chose to type it. A synonym needle (variant.synonym) only
+// counts where wordOccurs finds it standing as its own word; a fuzzy needle
+// (widen's miss-path substitution, harvested from the corpus's own vocabulary)
+// keeps the old any-occurrence rule, because it is a different and safer case.
+func (t *term) satisfied(folded []byte) bool {
+	if indexAt(folded, t.needle, t.rare) >= 0 {
+		return true
+	}
+	for i := range t.alt {
+		v := &t.alt[i]
+		if v.synonym {
+			if wordOccurs(folded, v.needle, v.rare) {
+				return true
+			}
+			continue
+		}
+		if indexAt(folded, v.needle, v.rare) >= 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// wordOccurs reports whether needle occurs in folded classified as a whole
+// word. It runs ahead of collect, before raw text is plumbed to this walk, so
+// it stands classify's own raw argument in for folded — that only ever makes
+// the boundary test stricter, never looser, because caseBoundary needs an
+// actual case transition to fire and folded has none left. So a needle this
+// finds standing as a whole word is one collect's raw-aware pass, run later
+// over the same text, will find no less a word than this did.
+func wordOccurs(folded, needle []byte, rare int) bool {
+	for base := 0; base+len(needle) <= len(folded); {
+		at := indexAt(folded[base:], needle, rare)
+		if at < 0 {
+			return false
+		}
+		off := base + at
+		if classify(folded, folded, off, len(needle)) == schema.MatchWord {
+			return true
+		}
+		base = off + len(needle)
 	}
 	return false
 }
@@ -295,9 +371,9 @@ func (m *matcher) collect(dst []span, folded, raw []byte) []span {
 			continue
 		}
 		t := &m.terms[i]
-		dst = appendSpans(dst, folded, raw, t.needle, t.rare)
+		dst = appendSpans(dst, folded, raw, t.needle, t.rare, false)
 		for j := range t.alt {
-			dst = appendSpans(dst, folded, raw, t.alt[j].needle, t.alt[j].rare)
+			dst = appendSpans(dst, folded, raw, t.alt[j].needle, t.alt[j].rare, t.alt[j].synonym)
 		}
 	}
 	if len(m.terms) > 1 || m.expanded {
@@ -314,14 +390,21 @@ func (m *matcher) collect(dst []span, folded, raw []byte) []span {
 
 // appendSpans walks each needle separately: a span's length is its own
 // needle's, and two needles of one term rarely share a length.
-func appendSpans(dst []span, folded, raw, needle []byte, rare int) []span {
+//
+// wordOnly holds for a synonym needle. The caller never typed it, so it counts
+// only where it stands as its own word: substituting on someone's behalf must
+// not widen their query into the insides of unrelated words.
+func appendSpans(dst []span, folded, raw, needle []byte, rare int, wordOnly bool) []span {
 	for base := 0; base+len(needle) <= len(folded); {
 		at := indexAt(folded[base:], needle, rare)
 		if at < 0 {
 			break
 		}
 		off := base + at
-		dst = append(dst, span{offset: off, length: len(needle), kind: classify(folded, raw, off, len(needle))})
+		kind := classify(folded, raw, off, len(needle))
+		if !wordOnly || kind == schema.MatchWord {
+			dst = append(dst, span{offset: off, length: len(needle), kind: kind})
+		}
 		base = off + len(needle)
 	}
 	return dst

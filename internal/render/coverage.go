@@ -47,7 +47,13 @@ type Query struct {
 type Expansion struct {
 	Term     string   `json:"term"`
 	Variants []string `json:"variants"`
-	Distance int      `json:"distance"`
+	Distance int      `json:"distance,omitempty"`
+
+	// Synonym marks an expansion drawn from the shipped synonym table rather
+	// than the miss-path's edit-distance substitution; Version then names the
+	// table build a caller reading a different one can check itself against.
+	Synonym bool `json:"synonym,omitempty"`
+	Version int  `json:"version,omitempty"`
 }
 
 // missing is the query terms no returned turn carries.
@@ -70,6 +76,11 @@ func (q Query) lines() []string {
 	// Ahead of everything else: every line below describes the result of the
 	// query this one is still correcting.
 	for _, e := range q.Expanded {
+		if e.Synonym {
+			out = append(out, fmt.Sprintf("── also searched %s for %s as a whole word (shipped synonyms, v%d)",
+				strings.Join(e.Variants, ", "), e.Term, e.Version))
+			continue
+		}
 		out = append(out, fmt.Sprintf(
 			"── no turn carries %s; searched %s instead (%d %s away) — --exact to search only what you typed",
 			e.Term, strings.Join(e.Variants, ", "), e.Distance, plural(e.Distance, "edit", "edits")))

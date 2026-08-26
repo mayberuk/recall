@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/mayberuk/recall/internal/schema"
@@ -31,7 +32,7 @@ func TestClassifyReadsCaseFromRawNotFolded(t *testing.T) {
 func TestATermIsFoundAndLocatedThroughAnyOfItsNeedles(t *testing.T) {
 	typed := newTerm(rawTerm{text: "settlemint"}, true)
 	widened := typed
-	widened.alt = []variant{newVariant("settlement"), newVariant("batch")}
+	widened.alt = []variant{newVariant("settlement", false), newVariant("batch", false)}
 
 	for _, c := range []struct {
 		name  string
@@ -59,6 +60,182 @@ func TestATermIsFoundAndLocatedThroughAnyOfItsNeedles(t *testing.T) {
 	}
 }
 
+func TestNewTermAddsSynonymVariantsForATableWord(t *testing.T) {
+	long := newTerm(rawTerm{text: "database"}, false)
+	if len(long.alt) != 1 || string(long.alt[0].needle) != "db" {
+		t.Fatalf("database.alt = %+v, want one variant needle \"db\"", long.alt)
+	}
+	if !long.found(fold(nil, "back up the db before the migration")) {
+		t.Error("a term for \"database\" did not find a turn carrying only \"db\"")
+	}
+
+	short := newTerm(rawTerm{text: "db"}, false)
+	if len(short.alt) != 1 || string(short.alt[0].needle) != "database" {
+		t.Fatalf("db.alt = %+v, want one variant needle \"database\"", short.alt)
+	}
+}
+
+func TestNewTermAddsNoAltForAWordNotInTheTable(t *testing.T) {
+	if got := newTerm(rawTerm{text: "wallet"}, false); len(got.alt) != 0 {
+		t.Errorf("wallet.alt = %+v, want none", got.alt)
+	}
+}
+
+// --exact and a quoted phrase suppress the synonym table the same way they
+// already suppress stemming — matching the requirement's own wording.
+func TestNewTermSuppressesSynonymsUnderExactAndInAPhrase(t *testing.T) {
+	if got := newTerm(rawTerm{text: "database"}, true); len(got.alt) != 0 {
+		t.Errorf("database.alt under --exact = %+v, want none", got.alt)
+	}
+	if got := newTerm(rawTerm{text: "database", quoted: true}, false); len(got.alt) != 0 {
+		t.Errorf("database.alt inside a quoted phrase = %+v, want none", got.alt)
+	}
+}
+
+// A synonym-bearing term marks the matcher as expanded at compile time, the
+// same signal widen sets on the miss path — collect needs it to sort a single
+// term's spans, which two needles can otherwise return out of offset order.
+func TestCompileMarksTheMatcherExpandedForATableWord(t *testing.T) {
+	if m := compile(Query{Text: "database"}); !m.expanded {
+		t.Error("compiling a table word did not set matcher.expanded")
+	}
+	if m := compile(Query{Text: "wallet"}); m.expanded {
+		t.Error("compiling a non-table word set matcher.expanded")
+	}
+}
+
+// A synonym reaches a turn the typed spelling never uses, on a plain hit —
+// not only when the search would otherwise have come back empty. This is the
+// worked example the requirement is built around.
+func TestASynonymReachesATurnTheTypedSpellingNeverUses(t *testing.T) {
+	turns := []schema.Turn{turn("s1", schema.TierConversation, "back up the db before the migration runs")}
+	res := Search(turns, Query{Text: "database"})
+	if len(res.Hits) != 1 {
+		t.Fatalf("%d hits, want 1 — the turn only ever says \"db\"", len(res.Hits))
+	}
+	want := []Expansion{{Term: "database", Variants: []string{"db"}, Synonym: true}}
+	if !reflect.DeepEqual(res.Match.Expanded, want) {
+		t.Errorf("Expanded %+v, want %+v", res.Match.Expanded, want)
+	}
+
+	// The reverse direction: typing the abbreviation reaches the long form.
+	turns2 := []schema.Turn{turn("s1", schema.TierConversation, "restore the database from the nightly snapshot")}
+	res2 := Search(turns2, Query{Text: "db"})
+	if len(res2.Hits) != 1 {
+		t.Fatalf("%d hits, want 1 — the turn only ever says \"database\"", len(res2.Hits))
+	}
+	want2 := []Expansion{{Term: "db", Variants: []string{"database"}, Synonym: true}}
+	if !reflect.DeepEqual(res2.Match.Expanded, want2) {
+		t.Errorf("Expanded %+v, want %+v", res2.Match.Expanded, want2)
+	}
+}
+
+// The regression guard: a synonym needle sitting only inside an unrelated
+// word — "id" inside "video", the shape that inflated "identifier" from 141
+// hits to 49,524 — is not a hit. Widening a query on the caller's behalf must
+// not silently turn it into a substring search of the whole corpus; a term
+// the caller never typed earns a match only where it stands as its own word.
+// A build that dropped the word-boundary rule and went back to any-occurrence
+// matching would turn this hit count positive and fail this test.
+func TestSynonymNeedleInsideALongerWordIsNotAHit(t *testing.T) {
+	turns := []schema.Turn{turn("s1", schema.TierConversation, "check the video for calibration before the demo")}
+	res := Search(turns, Query{Text: "identifier"})
+	if len(res.Hits) != 0 {
+		t.Fatalf("%d hits, want 0 — \"id\" only ever sits inside \"video\", never as its own word", len(res.Hits))
+	}
+	if len(res.Match.Expanded) != 0 {
+		t.Errorf("Expanded %+v, want none — the interior match must not be declared as a search that contributed", res.Match.Expanded)
+	}
+}
+
+// The positive control for the guard above: the same synonym needle, present
+// as a standalone word rather than inside another one, still finds the turn
+// and the footer still declares the substitution. Without this the guard
+// above could be satisfied by breaking synonym matching altogether rather
+// than by fixing the boundary rule.
+func TestSynonymNeedleAsAStandaloneWordIsAHit(t *testing.T) {
+	turns := []schema.Turn{turn("s1", schema.TierConversation, "grab the id from the response before you log it")}
+	res := Search(turns, Query{Text: "identifier"})
+	if len(res.Hits) != 1 {
+		t.Fatalf("%d hits, want 1 — \"id\" appears as its own word", len(res.Hits))
+	}
+	want := []Expansion{{Term: "identifier", Variants: []string{"id"}, Synonym: true}}
+	if !reflect.DeepEqual(res.Match.Expanded, want) {
+		t.Errorf("Expanded %+v, want %+v", res.Match.Expanded, want)
+	}
+}
+
+// --exact rules the substitution out the same way it does for stemming: the
+// literal word is searched and nothing else, so a corpus that only ever wrote
+// the counterpart is a genuine miss.
+func TestExactSuppressesSynonymExpansion(t *testing.T) {
+	turns := []schema.Turn{turn("s1", schema.TierConversation, "back up the db before the migration runs")}
+	res := Search(turns, Query{Text: "database", Exact: true})
+	if len(res.Hits) != 0 {
+		t.Errorf("%d hits under --exact, want 0 — \"database\" never appears literally", len(res.Hits))
+	}
+	if len(res.Match.Expanded) != 0 {
+		t.Errorf("Expanded %+v under --exact, want none", res.Match.Expanded)
+	}
+}
+
+// A quoted phrase is never read as anything but itself, matching how phrases
+// already suppress stemming.
+func TestQuotedPhraseSuppressesSynonymExpansion(t *testing.T) {
+	turns := []schema.Turn{turn("s1", schema.TierConversation, "back up the db before the migration runs")}
+	res := Search(turns, Query{Text: `"database"`})
+	if len(res.Hits) != 0 {
+		t.Errorf("%d hits for a quoted phrase, want 0 — \"database\" never appears literally", len(res.Hits))
+	}
+	if len(res.Match.Expanded) != 0 {
+		t.Errorf("Expanded %+v for a quoted phrase, want none", res.Match.Expanded)
+	}
+}
+
+// The negative control: a query using no table word adds no needle, so the
+// coverage line has nothing to report.
+func TestANonTableWordAddsNoExpansion(t *testing.T) {
+	turns := []schema.Turn{turn("s1", schema.TierConversation, "the wallet button")}
+	res := Search(turns, Query{Text: "wallet"})
+	if len(res.Hits) == 0 {
+		t.Fatal("0 hits for a term the turn carries literally")
+	}
+	if len(res.Match.Expanded) != 0 {
+		t.Errorf("Expanded %+v, want none — \"wallet\" is not a table word", res.Match.Expanded)
+	}
+}
+
+// A table word that turns up nowhere at all — neither spelling — is a plain
+// miss, and the substitution has nothing to declare: "contributes to a
+// search" means the returned turns actually carry it.
+func TestASynonymThatMatchesNothingReportsNoExpansion(t *testing.T) {
+	turns := []schema.Turn{turn("s1", schema.TierConversation, "the wallet button")}
+	res := Search(turns, Query{Text: "database"})
+	if len(res.Hits) != 0 {
+		t.Fatalf("%d hits, want 0 — neither \"database\" nor \"db\" appears", len(res.Hits))
+	}
+	if len(res.Match.Expanded) != 0 {
+		t.Errorf("Expanded %+v, want none on a total miss", res.Match.Expanded)
+	}
+}
+
+// A relaxed, multi-term search names only the terms the returned turns
+// actually carry: a table word absent from every returned turn is not
+// declared just because it compiled with a synonym.
+func TestASynonymTermAbsentFromTheReturnedTurnsIsNotDeclared(t *testing.T) {
+	turns := []schema.Turn{turn("s1", schema.TierConversation, "the wallet button")}
+	res := Search(turns, Query{Text: "database wallet"})
+	if len(res.Hits) == 0 {
+		t.Fatal("0 hits, want the relaxed match on \"wallet\" alone")
+	}
+	if len(res.Match.Expanded) != 0 {
+		t.Errorf("Expanded %+v, want none — the returned turn carries only \"wallet\"", res.Match.Expanded)
+	}
+}
+
+// caseBoundary is classify's raw-side test in isolation: each of the four
+// rules in the phase's action block, plus the guards that keep it inert
+// outside ASCII and off invalid indices.
 func TestCaseBoundary(t *testing.T) {
 	cases := []struct {
 		name string
