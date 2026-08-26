@@ -39,6 +39,7 @@ them are what you came back for.
 | what did we conclude | `recall turns <query>` |
 | what was said around it | `recall show <session> [query]` |
 | when did this come up | `recall when <query>` |
+| reopen that session in its own agent | `recall resume <session>` |
 | have I hit this before, anywhere | `recall find <query> --all` |
 | is the archive sound | `recall doctor` |
 | am I on the latest release | `recall update --check` |
@@ -96,6 +97,24 @@ it best".
 recall when flipper
 recall when "retry budget" --all
 ```
+
+### `recall resume`
+
+Prints the shell command that reopens a session in the agent it ran under — its own CLI's resume
+flag or subcommand, with the session id, and a `cd` into the directory it started in when one was
+recorded. It prints the command rather than running it, so pipe it into `eval`:
+
+```
+recall resume 5fd86b00
+eval "$(recall resume 5fd86b00)"
+```
+
+A Claude Code session resumes as `claude --resume <id>`, a Codex session as `codex resume <id>`.
+If the recorded directory no longer exists, or none was ever recorded, `resume` still prints the
+command — a missing directory is not a reason to withhold a session id the caller can still use —
+and says which of the two happened on stderr, since the one-line stdout form has no room for
+prose and must stay eval-safe. `--json` and `--format jsonl` carry the same note in the `notes`
+field of the response body instead.
 
 ### `recall doctor`
 
