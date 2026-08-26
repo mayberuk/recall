@@ -129,10 +129,8 @@ func TestSkillDescriptionCarriesTriggerPhrasings(t *testing.T) {
 	}
 }
 
-// skillContentClaims are substrings the shipped SKILL.md must carry so its prose
-// cannot silently fall out of step with what internal/scan actually does. Table-
-// driven so a claim that drops out of the file names itself in the failure,
-// the same shape TestSkillDescriptionCarriesTriggerPhrasings already uses.
+// skillContentClaims are substrings the shipped SKILL.md must carry, so its
+// prose cannot fall out of step with what internal/scan actually does.
 var skillContentClaims = map[string]string{
 	"identifier-boundary ranking":                                 "camelCase or acronym boundary ranks that match as a whole word",
 	"near-neighbor correction on a miss, stated as one-edit-only": "corrected to a one-edit neighbor",
@@ -152,11 +150,6 @@ func TestSkillDescribesTheNewMatchingBehavior(t *testing.T) {
 	}
 }
 
-// TestSkillDoesNotClaimIdentifierMatchRanksBelowWholeWord is the negative
-// control for TestSkillDescribesTheNewMatchingBehavior's identifier-ranking
-// claim: classify (internal/scan/match.go) now ranks a case-boundary match AS
-// a whole word, so the pre-change claim that it ranks below one is false
-// wherever it survives.
 func TestSkillDoesNotClaimIdentifierMatchRanksBelowWholeWord(t *testing.T) {
 	text := string(readAsset(t, "assets/skills/recall/SKILL.md"))
 	if strings.Contains(text, "ranked below a whole-word match") {
