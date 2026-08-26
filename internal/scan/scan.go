@@ -75,10 +75,7 @@ type Match struct {
 	// relaxed result knows which words the answer is actually about.
 	Carried []string
 
-	// Expanded is the terms answered by a word the caller did not type. It is
-	// empty on every search that found what it was given, and a coverage line
-	// states every entry: a search that quietly answered a different query than
-	// it was handed is the silent false negative this tool exists to invert.
+	// Expanded is the terms answered by a word the caller did not type.
 	Expanded []Expansion
 }
 
@@ -127,14 +124,9 @@ type Result struct {
 	WordsScanned int64
 	WordsCounted bool
 
-	// Passes is how many readings the coverage footer explains, not how many
-	// walks the corpus took: one to find hits, one more when a search that came
-	// back short went to explain itself, and one more again when that
-	// explanation turned up a word close enough to search in place of a term
-	// nothing carried. The explaining pass is itself two walks when the query
-	// has more than one term — counting each term, then gathering nearby words
-	// for the ones nothing carried — and the bytes of both are charged, so
-	// dividing BytesScanned by Passes does not give corpus size.
+	// Passes is how many readings the coverage footer explains: one to find
+	// hits, one to explain a short result, one for a substitution re-run.
+	// Dividing BytesScanned by Passes does not give corpus size.
 	Passes int
 
 	// TurnsBySession is conversation turns per session, counted over every turn
@@ -143,12 +135,9 @@ type Result struct {
 	// session is not penalised for having used tools.
 	TurnsBySession map[string]int
 
-	// Terms is populated when the search came back empty: per query term, how
-	// many turns carry that term alone, and for a term no turn carries, the
-	// corpus terms closest to it. A substitution drawn from that report fills
-	// Hits without emptying it, because the terms it could not answer — the ones
-	// whose nearest neighbour was too far to search — are still the caller's
-	// next query.
+	// Terms is populated when the search came back short: per query term, how
+	// many turns carry it, and the closest corpus terms for one none does. A
+	// substitution can still fill Hits without emptying it.
 	Terms []TermReport
 
 	// Match is how the query was read and what the hits carry.
@@ -217,19 +206,9 @@ func Search(turns []schema.Turn, q Query) Result {
 	found := mergeShards(scanShards(turns, q, mp, want), &res, len(m.terms))
 	settle(&res, mp, found)
 
-	// A search comes back short in two shapes, and both are the miss path. It
-	// found nothing at all, or it relaxed to turns that between them carry only
-	// part of the query — and a term no returned turn carries is one the caller
-	// got no answer about whatever else came back. The survey explains both, and
-	// the substitution after it draws its candidates from the same pass.
-	//
-	// The relaxed shape pays for that pass only because a substitution may
-	// follow, so --exact, which rules the substitution out, rules the pass out
-	// with it. A search that found nothing is owed its report either way.
-	//
-	// A search whose returned turns carry every term is neither shape and
-	// returns here, which is what keeps the hit path at the one pass it has
-	// always cost.
+	// A full hit returns here, keeping the hit path at its one-pass cost. A
+	// miss or a relaxed result goes on to the survey; --exact skips the pass
+	// since it forecloses the substitution the pass exists for.
 	miss := len(res.Hits) == 0
 	partial := !miss && !q.Exact && slices.Contains(found.carried, false)
 	if len(m.terms) == 0 || q.NearbyMax < 0 || !(miss || partial) {
@@ -250,10 +229,7 @@ func Search(turns []schema.Turn, q Query) Result {
 	return res
 }
 
-// settle turns one walk's merged shards into the hits a caller sees and the
-// Match fields that describe them. Below the level anything reached it keeps one
-// level of slack, which is only ever returned when the query was not satisfiable
-// at all.
+// settle keeps below-level hits only when the full query was unsatisfiable.
 func settle(res *Result, m *matcher, found merged) {
 	res.Hits = found.hits
 	res.Match.Required, res.Match.Carried = 0, nil
@@ -274,15 +250,7 @@ func settle(res *Result, m *matcher, found merged) {
 }
 
 // substitute re-runs the search with the corpus words closest to the terms
-// nothing carried put in their place, and keeps what comes back only if it
-// reaches one of those terms.
-//
-// This is a third reading of the corpus and is charged to Passes and
-// BytesScanned like every other one. It runs only after a search came back
-// short, where the miss path is already allowed to cost more than the hit path,
-// and it does not run at all unless the survey turned up a word close enough to
-// search — which on a query that is simply about something the corpus never
-// discussed, it does not.
+// nothing carried, keeping the re-run only if it reaches one of them.
 func substitute(turns []schema.Turn, q Query, res *Result, m *matcher, want map[schema.Tier]bool, reports []TermReport) {
 	exps := substitutions(reports)
 	if len(exps) == 0 {
@@ -290,8 +258,7 @@ func substitute(turns []schema.Turn, q Query, res *Result, m *matcher, want map[
 	}
 	wide := m.widen(exps)
 
-	// The counts this walk re-derives are the same corpus facts the first one
-	// established, so they go to a throwaway and only the work is carried back.
+	// again is a throwaway; only its scan cost is carried back to res.
 	var again Result
 	found := mergeShards(scanShards(turns, q, &wide, want), &again, len(wide.terms))
 	res.BytesScanned += again.BytesScanned
@@ -302,16 +269,8 @@ func substitute(turns []schema.Turn, q Query, res *Result, m *matcher, want map[
 	var widened Result
 	settle(&widened, &wide, found)
 
-	// The re-run is kept only when it carries a term the first walk carried
-	// nothing of, which is the whole thing a substitution is for. It is also the
-	// whole test: the two matchers differ in one term's needles alone, so a turn
-	// can only carry more of the query than before by carrying that term — and a
-	// re-run that did not manage even that has answered a different question for
-	// nothing, which is what the distance rule exists to prevent.
-	//
-	// Comparing lengths is comparing sets here, because widening a needle only
-	// ever adds matches and both results name their carried terms in query
-	// order, so the set can grow and cannot shrink.
+	// Kept only if it carries a term the first walk carried none of, else it
+	// answered a different question for nothing.
 	if len(widened.Match.Carried) <= len(res.Match.Carried) {
 		return
 	}

@@ -162,11 +162,6 @@ func TestCoverageJSONCarriesBothBoundariesSeparately(t *testing.T) {
 	}
 }
 
-// A search that answered a word other than the one it was handed says so, and
-// says which word for which: a footer that only admitted "something was
-// substituted" would leave the reader unable to tell a corrected typo from a
-// wrong answer. The line is pinned character for character for the same reason
-// the two header lines are.
 func TestAnExpansionNamesWhatWasTypedWhatWasSearchedAndHowFarApart(t *testing.T) {
 	c := Coverage{
 		Sessions: 2, SessionsSearched: 2, LiveFrom: day("2026-06-10"), Refreshed: true,
@@ -186,9 +181,6 @@ func TestAnExpansionNamesWhatWasTypedWhatWasSearchedAndHowFarApart(t *testing.T)
 	}
 }
 
-// Two things the line above must not be read as fixed: a term can be searched
-// under more than one spelling, and the distance is a number the sentence
-// agrees with rather than the word "1" written into the format.
 func TestAnExpansionLineNamesEveryVariantAndPluralisesItsDistance(t *testing.T) {
 	q := Query{Expanded: []Expansion{
 		{Term: "recieve", Variants: []string{"receive", "recieved"}, Distance: 1},
@@ -209,9 +201,6 @@ func TestAnExpansionLineNamesEveryVariantAndPluralisesItsDistance(t *testing.T) 
 	}
 }
 
-// The negative control: a search that answered the words it was handed leaves
-// the footer free of any expansion line. A line printed unconditionally would
-// pass both tests above.
 func TestAQueryWithNothingSubstitutedPrintsNoExpansionLine(t *testing.T) {
 	q := Query{Terms: []string{"wallet", "balance"}, Required: 1, Total: 2, Carried: []string{"wallet", "balance"}}
 	for _, line := range q.lines() {
@@ -398,9 +387,6 @@ func TestCoverageWithStatsRoundTrips(t *testing.T) {
 	}
 }
 
-// A caller reading --json has to be able to tell a corrected typo apart from a
-// wrong answer without parsing the human footer, and a caller that asked for
-// exactly what it typed must see no key at all rather than an empty one.
 func TestExpansionsReachTheJSONQueryAndAreAbsentWhenNothingWasSubstituted(t *testing.T) {
 	expanded, err := json.Marshal(Query{
 		Terms: []string{"settlemint"}, Required: 1, Total: 1, Carried: []string{"settlemint"},

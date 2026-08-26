@@ -60,9 +60,8 @@ type matcher struct {
 	// best five-term matches instead of falling off a cliff.
 	strict bool
 
-	// expanded is set when any term carries a substituted needle. It is the
-	// other way one turn's spans arrive out of offset order, and collect has to
-	// sort them for the same reason a multi-term query does.
+	// expanded is set when any term carries a substituted needle: a second way
+	// spans can arrive out of offset order, forcing collect to sort them.
 	expanded bool
 
 	dropped []string
@@ -71,22 +70,19 @@ type matcher struct {
 	carried []bool
 }
 
-// term is one slot of the query. It is satisfied by the needle the caller typed
-// or by any needle in alt, and it stays one slot however many needles back it —
-// so mark, need and Match.Required are a function of the query's word count
-// alone and the AND-with-degrade contract does not move when a term is widened.
+// term is one slot of the query, satisfied by the needle the caller typed or
+// any needle in alt. It stays one slot however many needles back it, so mark,
+// need and Match.Required stay a function of the query's word count alone.
 type term struct {
 	text   string // the term as typed, folded
 	needle []byte // what is searched: the stem when expanding, else the term
 	rare   int    // index into needle of the byte the corpus scan anchors on
 	phrase bool   // came from quotes, so it is never stemmed and never dropped
 
-	// alt are needles searched in this term's place, added on the miss path and
-	// nil on every search that found something. The typed needle stays a field
-	// of its own rather than becoming alt[0], because a one-element slice per
-	// term is one allocation per term per search: BenchmarkSearch/small/
-	// single-term allocates 43 times in total, so the slice that never fires
-	// would be 2.3% of it against a 2% regression gate.
+	// alt are needles searched in this term's place, added on the miss path
+	// and nil on every search that found something. The typed needle stays a
+	// field of its own rather than becoming alt[0]: a one-element slice on
+	// every term would add per-search allocations against a 2% regression gate.
 	alt []variant
 }
 
@@ -145,9 +141,8 @@ func (m *matcher) fork() matcher {
 }
 
 // widen returns a matcher whose named terms also search the corpus words in
-// exps. The terms slice is copied rather than written through: the first walk's
-// answer was produced by the original, and a re-run that comes to nothing has to
-// leave it exactly as it stood.
+// exps. The terms slice is copied rather than written through, since a re-run
+// that comes to nothing has to leave the original matcher exactly as it stood.
 func (m *matcher) widen(exps []Expansion) matcher {
 	out := m.fork()
 	out.terms = slices.Clone(m.terms)

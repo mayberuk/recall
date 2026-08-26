@@ -404,12 +404,6 @@ func TestRelaxedRepoScopedSearchSumsBytesAndPassesAcrossTheWiderProbe(t *testing
 	}
 }
 
-// A typo the corpus can answer is answered, and the footer the command prints
-// names the word it answered under. This is the whole chain — the scanner's
-// Match, coverageOf, and the rendered line — because a substitution that
-// happened without reaching the footer is exactly the silent answer-swap the
-// footer exists to prevent, and each half passing in isolation would not catch
-// a break between them.
 func TestATypoIsCorrectedAndTheCoverageFooterSaysSo(t *testing.T) {
 	turns := []schema.Turn{
 		{Session: "s1", UUID: "u1", Repo: "acme/mobile", Tier: schema.TierConversation,
@@ -419,7 +413,7 @@ func TestATypoIsCorrectedAndTheCoverageFooterSaysSo(t *testing.T) {
 
 	corrected := &corpus{turns: turns, tiers: []schema.Tier{schema.TierConversation}}
 	f := newSearchFlags()
-	f.All = true // the test process's own git scope would otherwise filter every synthetic turn out
+	f.All = true // without it, the test process's own git scope filters out every synthetic turn
 	if err := f.check(); err != nil {
 		t.Fatalf("check: %v", err)
 	}
@@ -431,8 +425,6 @@ func TestATypoIsCorrectedAndTheCoverageFooterSaysSo(t *testing.T) {
 		t.Errorf("the footer never named the substitution\n%s", strings.Join(corrected.coverageOf(s.scan, f, s.skipped, nil).Lines(), "\n"))
 	}
 
-	// The control: --exact asked for the word as typed, so there is nothing to
-	// find and nothing to declare.
 	literal := &corpus{turns: turns, tiers: []schema.Tier{schema.TierConversation}}
 	e := newSearchFlags()
 	e.All, e.Exact = true, true
@@ -450,11 +442,9 @@ func TestATypoIsCorrectedAndTheCoverageFooterSaysSo(t *testing.T) {
 	}
 }
 
-// A repo-scoped search surveys its own slice rather than leaving that to the
-// whole-machine probe behind it, because the survey is where a typo's
-// replacement comes from. Without it a misspelling the caller's own repo can
-// answer comes back as "found elsewhere", pointing at a checkout that is not
-// where the answer is.
+// A repo-scoped search must survey its own slice for a typo's replacement,
+// not defer to the whole-machine probe — otherwise a misspelling the caller's
+// own repo can answer comes back as "found elsewhere" instead.
 func TestARepoScopedTypoIsAnsweredInTheRepoRatherThanReportedElsewhere(t *testing.T) {
 	c := &corpus{
 		turns: []schema.Turn{

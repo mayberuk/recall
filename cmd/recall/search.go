@@ -412,13 +412,10 @@ type searched struct {
 // search runs one query and returns the ranked sessions plus the raw scan,
 // which the coverage line needs for the counts it states.
 //
-// The nearby-terms survey runs here even when the scope is one repo and a
-// whole-machine probe is coming behind it that would survey the corpus anyway.
-// The survey is where a misspelling's replacement comes from, so declining it
-// costs the caller an answer their own repo holds and hands them a pointer to
-// another checkout instead. Its suggestions are still the weaker ones and
-// `find` still prefers the wider pass's, which is what makes the overlap
-// cost-only.
+// The nearby-terms survey always runs here, even when a whole-machine probe
+// is coming behind it, because it is where a misspelling's own-repo answer
+// comes from — skipping it would report an answer the caller's own repo
+// holds as merely "found elsewhere".
 func (c *corpus) search(q string, f *searchFlags, mode rank.Mode) searched {
 	sc := scopeOf(f)
 	res := scan.Search(inScope(c.turns, sc), scan.Query{

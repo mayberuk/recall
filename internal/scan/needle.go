@@ -103,13 +103,10 @@ func indexNeedle(h, n []byte, at int) int {
 	return -1
 }
 
-// found reports whether folded carries this term, through the needle the caller
-// typed or any needle substituted for it. The zero-anchor case is spelled out
-// here rather than left to indexNeedle so that the overwhelmingly common shape —
-// one term, scanned against every turn in the corpus — reaches bytes.Contains
-// through one branch instead of two calls. For the same reason the substituted
-// needles sit behind a length test and a call of their own: alt is empty on
-// every search that found something, and this runs once per term per turn.
+// found reports whether folded carries this term, through the needle the
+// caller typed or any needle substituted for it. The zero-anchor case is
+// spelled out here rather than left to indexNeedle, since this runs once per
+// term per turn; alt, checked only when non-empty, is nil on every hit.
 func (t *term) found(folded []byte) bool {
 	if t.rare == 0 {
 		if bytes.Contains(folded, t.needle) {
@@ -134,8 +131,7 @@ func (t *term) altFound(folded []byte) bool {
 }
 
 // index is where this term first occurs in folded, or -1. The earliest needle
-// wins: a caller walking forward from one match must not step over an earlier
-// occurrence of another needle backing the same term.
+// wins, so a caller walking forward from one match never steps over another.
 func (t *term) index(folded []byte) int {
 	best := indexAt(folded, t.needle, t.rare)
 	for i := range t.alt {

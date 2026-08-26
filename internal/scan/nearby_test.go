@@ -36,10 +36,6 @@ func TestNoTermReportWhenSomethingMatched(t *testing.T) {
 	}
 }
 
-// A typo is the case this exists for: nothing came back for what was typed, and
-// the corpus does carry a word one edit away. The word is both searched in the
-// typo's place and still reported, because the report is what a caller checks
-// the substitution against.
 func TestATypoIsAnsweredWithTheWordTheCorpusCarries(t *testing.T) {
 	turns, _ := corpus(t)
 
@@ -181,12 +177,8 @@ func TestNearbyMaxCapsAndDisables(t *testing.T) {
 	}
 }
 
-// spelledCorpus carries one word — "settlement" — and nothing else close to it,
-// so a query against it either reaches that word or reaches nothing, and which
-// of the two is not a matter of degree. Its byte total is written out here
-// rather than measured, because the pass-counting tests below assert how many
-// times the corpus was read and a figure taken from a run would agree with any
-// number of readings.
+// spelledBytes is derived from the fixture text, not read back from a run, so
+// the pass-counting tests below stay non-circular.
 const (
 	spelledText  = "the settlement batch cleared"
 	spelledBytes = int64(len(spelledText))
@@ -196,18 +188,13 @@ func spelledCorpus() []schema.Turn {
 	return []schema.Turn{turn("s1", schema.TierConversation, spelledText)}
 }
 
-// The substitution's positive case, stated as the whole chain: what came back,
-// what was declared, and what it cost. "settlemint" is one edit from
-// "settlement" and matches nothing on its own — the stem cut leaves
-// "settlemint" whole, because none of the suffixes it recognises ends it.
 func TestAMissIsReRunWithTheCorpusWordOneEditAway(t *testing.T) {
 	res := Search(spelledCorpus(), Query{Text: "settlemint"})
 
 	if len(res.Hits) != 1 {
 		t.Fatalf("%d hits, want 1 — the turn carrying the word one edit away", len(res.Hits))
 	}
-	// The hit locates "settlement", not the ten bytes of the typed term: a span
-	// measured off the wrong needle would highlight the wrong extent.
+	// The span must locate the substituted word, not the typed term's length.
 	h := res.Hits[0]
 	if got := h.Text[h.Offset : h.Offset+h.Length]; got != "settlement" {
 		t.Errorf("the hit locates %q, want %q", got, "settlement")
@@ -224,10 +211,7 @@ func TestAMissIsReRunWithTheCorpusWordOneEditAway(t *testing.T) {
 	}
 }
 
-// The negative control for the test above, and the distance rule stated as a
-// behaviour: "settlamint" is two edits from "settlement", so the corpus word is
-// offered and never searched. A rule that substituted whatever the collector
-// ranked first would pass the positive case and fail here.
+// Two edits away is offered, never substituted, unlike the one-edit case above.
 func TestATwoEditNeighbourIsSuggestedAndNeverSubstituted(t *testing.T) {
 	res := Search(spelledCorpus(), Query{Text: "settlamint"})
 
@@ -250,9 +234,6 @@ func TestATwoEditNeighbourIsSuggestedAndNeverSubstituted(t *testing.T) {
 	}
 }
 
-// --exact means match what was typed. Substituting a different word under it
-// would be a lie, so the same query that expands by default returns nothing here
-// and declares nothing.
 func TestExactRunsNoExpansion(t *testing.T) {
 	res := Search(spelledCorpus(), Query{Text: "settlemint", Exact: true})
 
@@ -262,7 +243,7 @@ func TestExactRunsNoExpansion(t *testing.T) {
 	if len(res.Match.Expanded) != 0 {
 		t.Errorf("Expanded %+v under --exact, want nothing", res.Match.Expanded)
 	}
-	// The offer survives --exact, because offering is not substituting.
+	// Offering survives --exact; only substituting does not.
 	if got := report(t, res, "settlemint"); len(got.Nearby) == 0 || got.Nearby[0].Text != "settlement" {
 		t.Errorf("suggestions %v, want settlement still offered", names(got.Nearby))
 	}
@@ -271,9 +252,7 @@ func TestExactRunsNoExpansion(t *testing.T) {
 	}
 }
 
-// The hit path pays for none of this. A search whose turns carry every term
-// reads the corpus once, and the byte figure is asserted alongside the pass
-// count because a pass that read nothing would satisfy either one alone.
+// Passes and bytes are asserted together: a no-op pass can't satisfy both.
 func TestASearchCarryingEveryTermReadsTheCorpusOnce(t *testing.T) {
 	res := Search(spelledCorpus(), Query{Text: "settlement batch"})
 
@@ -292,11 +271,6 @@ func TestASearchCarryingEveryTermReadsTheCorpusOnce(t *testing.T) {
 	}
 }
 
-// The other miss shape: turns came back, but between them they carry nothing at
-// all about one of the words typed. That term is expanded and the answer rises
-// from one term of two to both — which is the only outcome that adopts the
-// re-run, because an expansion that answers no more of the query than the first
-// walk did is a different question asked for nothing.
 func TestARelaxedResultExpandsTheTermNoTurnCarries(t *testing.T) {
 	turns := []schema.Turn{
 		turn("s1", schema.TierConversation, "the batch was replayed"),
@@ -321,17 +295,11 @@ func TestARelaxedResultExpandsTheTermNoTurnCarries(t *testing.T) {
 	if !reflect.DeepEqual(res.Match.Expanded, want) {
 		t.Errorf("Expanded %+v, want %+v", res.Match.Expanded, want)
 	}
-	// The relaxed shape is not a zero-result search, so it owes no term report —
-	// the footer's expansion line is where it says what it did.
 	if len(res.Terms) != 0 {
 		t.Errorf("%d term reports on a search that returned turns, want 0", len(res.Terms))
 	}
 }
 
-// The other way a re-run earns its place: no turn carries both words even after
-// the substitution, so the term count does not rise — but a term nothing carried
-// at all is now carried by something, and those turns are the half of the query
-// the caller had no answer about.
 func TestARelaxedResultKeepsAReRunThatCarriesATermNothingDid(t *testing.T) {
 	turns := []schema.Turn{
 		turn("s1", schema.TierConversation, "the batch was replayed"),
@@ -358,11 +326,6 @@ func TestARelaxedResultKeepsAReRunThatCarriesATermNothingDid(t *testing.T) {
 	}
 }
 
-// The negative control for the two tests above, and the rule that keeps a
-// re-run from swapping in a different question for nothing. The corpus word one
-// edit away sits in a turn --not rules out, so the re-run reaches no turn the
-// first walk did not: the answer, and the footer, stay exactly as they were.
-// The pass is still charged, because it was still read.
 func TestAReRunThatReachesNothingNewIsDiscardedAndStillCharged(t *testing.T) {
 	turns := []schema.Turn{
 		turn("s1", schema.TierConversation, "the batch was replayed"),
@@ -370,11 +333,6 @@ func TestAReRunThatReachesNothingNewIsDiscardedAndStillCharged(t *testing.T) {
 	}
 	res := Search(turns, Query{Text: "batch settlemint", Not: []string{"deprecated"}})
 
-	// Three passes is what says the re-run happened at all: the survey gathers
-	// from every searched turn, exclusions included, so "settlement" is offered
-	// and searched even though the turn holding it is ruled out. At two passes
-	// nothing was ever substituted and the rest of this would prove nothing. The
-	// reading is charged either way, because it was read either way.
 	if res.Passes != 3 {
 		t.Fatalf("reported %d passes, want 3 — the walk, the survey, and a re-run that came to nothing", res.Passes)
 	}
@@ -391,10 +349,6 @@ func TestAReRunThatReachesNothingNewIsDiscardedAndStillCharged(t *testing.T) {
 	}
 }
 
-// The negative control for the test above. Both terms exist and simply never
-// co-occur, so every term is carried by some returned turn and there is nothing
-// for an expansion to answer. This is the relaxed shape that must stay at one
-// pass.
 func TestARelaxedResultCarryingEveryTermIsNotExpanded(t *testing.T) {
 	turns := []schema.Turn{
 		turn("s1", schema.TierConversation, "alpha was decided here"),
@@ -414,16 +368,12 @@ func TestARelaxedResultCarryingEveryTermIsNotExpanded(t *testing.T) {
 	}
 }
 
-// twoSpellings carries both words the collector offers for "curson", in the
-// opposite order to the one it offers them in — nearest, then most used, then
-// alphabetically, which puts "cursor" ahead of "cursos".
+// twoSpellings orders its words opposite to ranking order, so a test can't
+// pass by accident.
 func twoSpellings() []schema.Turn {
 	return []schema.Turn{turn("s1", schema.TierConversation, "cursos and cursor in one turn")}
 }
 
-// A term backed by several needles is still one query slot, and a turn carrying
-// two of them is still one carrier of one term. Counting the needles instead
-// would let a single turn score as if it had answered two parts of the query.
 func TestATermStaysOneSlotHoweverManyNeedlesBackIt(t *testing.T) {
 	res := Search(twoSpellings(), Query{Text: "curson batch"})
 
@@ -441,12 +391,6 @@ func TestATermStaysOneSlotHoweverManyNeedlesBackIt(t *testing.T) {
 	}
 }
 
-// One term with two needles is the only shape whose spans can arrive out of
-// offset order with a single word in the query, because collect walks one needle
-// to the end of the turn before starting the next. Ranking is handed hits in
-// offset order within a turn, so the order is part of the answer — and this is
-// the case the two-term test above cannot see, since a second term makes collect
-// re-sort whatever the needles did.
 func TestOneTermsSeveralNeedlesAreCollectedInOffsetOrder(t *testing.T) {
 	res := Search(twoSpellings(), Query{Text: "curson"})
 
@@ -465,10 +409,8 @@ func TestOneTermsSeveralNeedlesAreCollectedInOffsetOrder(t *testing.T) {
 	}
 }
 
-// substitutions is the distance and cap rule on its own, over a candidate list
-// hand-built to hold more of each than the rule allows. The collector orders its
-// offers nearest first, which is what lets this stop at the first neighbour too
-// far away rather than filtering the whole list.
+// Candidates are ordered nearest-first, matching what the collector hands in,
+// so the cut at four relies on stopping rather than filtering the whole list.
 func TestSubstitutionsTakeTheNearestFourAndStopAtTwoEdits(t *testing.T) {
 	reports := []TermReport{
 		{Term: "carried", Turns: 3, Nearby: nil},

@@ -67,9 +67,8 @@ func (q Query) missing() []string {
 
 func (q Query) lines() []string {
 	var out []string
-	// Ahead of everything else, because it says what was searched rather than
-	// what the search then did: every line below describes the result of a query
-	// this one is still correcting.
+	// Ahead of everything else: every line below describes the result of the
+	// query this one is still correcting.
 	for _, e := range q.Expanded {
 		out = append(out, fmt.Sprintf(
 			"── no turn carries %s; searched %s instead (%d %s away) — --exact to search only what you typed",

@@ -44,7 +44,6 @@ func TestATermIsFoundAndLocatedThroughAnyOfItsNeedles(t *testing.T) {
 		{"typed needle only, absent", typed, "the settlement cleared", false, -1},
 		{"substituted needle present", widened, "the settlement cleared", true, 4},
 		{"neither needle present", widened, "nothing of the sort", false, -1},
-		// "batch" is earlier in the text but later in the needle list.
 		{"earliest needle wins, not the first listed", widened, "the batch and the settlement", true, 4},
 		{"typed needle behind a substituted one", widened, "batch then settlemint", true, 0},
 	} {
@@ -60,9 +59,6 @@ func TestATermIsFoundAndLocatedThroughAnyOfItsNeedles(t *testing.T) {
 	}
 }
 
-// caseBoundary is classify's raw-side test in isolation: each of the four
-// rules in the phase's action block, plus the guards that keep it inert
-// outside ASCII and off invalid indices.
 func TestCaseBoundary(t *testing.T) {
 	cases := []struct {
 		name string
