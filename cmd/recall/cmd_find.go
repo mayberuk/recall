@@ -92,6 +92,14 @@ func find(args []string, out, errOut io.Writer) error {
 			// saying so is the silent narrowing the footer exists to prevent.
 			limits = withoutFlag(limits, "--hits")
 		}
+		if sz.shaped {
+			// The --limit/--hits lines above are still true numbers, but
+			// --budget is why this attempt ran at all — naming --limit alone
+			// would credit a flag the caller never passed. When --limit already
+			// reports this same cut, mergeBudgetLimit folds --budget into that
+			// line instead of restating the identical fact underneath it.
+			limits = mergeBudgetLimit(limits, "sessions", len(sessions), len(s.ranked.Sessions))
+		}
 		view.Sessions = sessions
 		if len(sessions) == 0 {
 			view.Elsewhere, view.Terms = corp.elsewhere(q, f, s.scope)
@@ -152,6 +160,12 @@ func foundSomething(sessions []render.Session) error {
 type size struct {
 	limit, hits int
 	brief       bool
+
+	// shaped is true for every attempt beyond the first — the ones that only
+	// run because the first was too big for --budget. The first attempt is
+	// what --limit/--hits/--brief asked for on their own; shaped is what makes
+	// the footer say --budget, not just those flags, is why it gave up more.
+	shaped bool
 }
 
 // fitToBudget renders the largest answer that fits the caller's token budget,
@@ -159,13 +173,13 @@ type size struct {
 // session, then no snippets, then fewer sessions. Without --budget nothing is
 // given up and an oversized answer is refused, which is the existing contract.
 func fitToBudget(g *Globals, f *searchFlags, build func(size) ([]byte, error)) ([]byte, error) {
-	attempts := []size{{f.Limit, f.Hits, f.Brief}}
+	attempts := []size{{limit: f.Limit, hits: f.Hits, brief: f.Brief}}
 	if g.Budget > 0 && !f.IDs {
 		attempts = append(attempts,
-			size{f.Limit, 1, f.Brief},
-			size{f.Limit, 0, true},
-			size{max(f.Limit/2, 1), 0, true},
-			size{1, 0, true})
+			size{limit: f.Limit, hits: 1, brief: f.Brief, shaped: true},
+			size{limit: f.Limit, hits: 0, brief: true, shaped: true},
+			size{limit: max(f.Limit/2, 1), hits: 0, brief: true, shaped: true},
+			size{limit: 1, hits: 0, brief: true, shaped: true})
 	}
 
 	ceiling := g.Cap()
@@ -191,4 +205,19 @@ func withoutFlag(limits []render.Limit, flag string) []render.Limit {
 		}
 	}
 	return out
+}
+
+// mergeBudgetLimit adds a --budget cap to limits, naming it alongside an
+// existing entry that already reports the identical fact — same quantity,
+// same shown and total — instead of restating it on a line of its own. Two
+// lines saying the same number is a defect, not two narrowings; a genuinely
+// different cut (a different shown or total) still gets its own line.
+func mergeBudgetLimit(limits []render.Limit, what string, shown, total int) []render.Limit {
+	for i, l := range limits {
+		if l.What == what && l.Shown == shown && l.Total == total {
+			limits[i].Flag = l.Flag + ", --budget"
+			return limits
+		}
+	}
+	return append(limits, render.Limit{Flag: "--budget", What: what, Shown: shown, Total: total})
 }

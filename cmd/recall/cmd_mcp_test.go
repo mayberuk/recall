@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -832,16 +833,34 @@ func TestTheAdapterPassesEveryValueAndNotJustTheFlag(t *testing.T) {
 // TestAZeroNumberIsLeftToTheVerbsOwnDefault pins the reading of an absent
 // number: a plain numeric field is omitempty, so a zero arriving there cannot
 // be told from a field the caller never set, and the verb's own default is the
-// only honest reading of it.
+// only honest reading of it. Budget is the one exception, pinned separately by
+// TestABudgetOfZeroGetsTheMCPDefault: unlike --limit, a caller silent on it
+// does not get silence back.
 func TestAZeroNumberIsLeftToTheVerbsOwnDefault(t *testing.T) {
 	argv := searchArgv(mcp.SearchArgs{Query: "agvtool"})
-	for _, flag := range []string{"--limit", "--budget"} {
-		if slices.Contains(argv, flag) {
-			t.Errorf("%s was passed for a field the caller never set: %v", flag, argv)
-		}
+	if slices.Contains(argv, "--limit") {
+		t.Errorf("--limit was passed for a field the caller never set: %v", argv)
 	}
 	if slices.Contains(argv, "--all") {
 		t.Errorf("a false boolean was passed as a flag: %v", argv)
+	}
+}
+
+// TestABudgetOfZeroGetsTheMCPDefault is board item 5's default-budget half.
+// An MCP caller silent on --budget still gets one passed to the verb: the
+// alternative is the full refusal cap landing in the caller's context on
+// every call it makes. An explicit --budget, including one smaller than the
+// default, is never overridden by it — the negative half of this test, since
+// a version that hardcoded the default over any positive value would still
+// pass a presence-only check.
+func TestABudgetOfZeroGetsTheMCPDefault(t *testing.T) {
+	argv := searchArgv(mcp.SearchArgs{Query: "agvtool"})
+	assertHasFlagValue(t, argv, "--budget", strconv.Itoa(mcp.DefaultBudget))
+
+	argv = searchArgv(mcp.SearchArgs{Query: "agvtool", Budget: 400})
+	assertHasFlagValue(t, argv, "--budget", "400")
+	if slices.Contains(argv, strconv.Itoa(mcp.DefaultBudget)) {
+		t.Errorf("an explicit --budget of 400 was overridden by the default %d: %v", mcp.DefaultBudget, argv)
 	}
 }
 
@@ -869,6 +888,85 @@ func TestAZeroACallerMeantReachesTheVerb(t *testing.T) {
 				t.Errorf("%s was passed for a field the caller never set: %v", flag, argv)
 			}
 		}
+	}
+}
+
+// TestFindNamesBudgetInTheFooterOnlyWhenItActuallyShapedTheAnswer is the
+// footer half of board item 5: a budget-driven cut has to say --budget is why,
+// alongside the --limit/--hits lines that are still true numbers but no
+// longer the whole reason. A version that stamped --budget onto every call
+// with g.Budget > 0, whether or not the answer needed shaping, would still
+// pass a bare "the line showed up once" check — the second case below is what
+// catches that, since --budget 100000 never has to give anything up.
+func TestFindNamesBudgetInTheFooterOnlyWhenItActuallyShapedTheAnswer(t *testing.T) {
+	harness(t)
+
+	// A budget of 1 token is a 4-byte cap: no real answer fits it, so every
+	// attempt beyond the first runs and the footer must say so.
+	shaped, _, err := callFind(t, fixtures.NeedleConversation, "--all", "--budget", "1")
+	if err != nil {
+		t.Fatalf("find: %v", err)
+	}
+	if !strings.Contains(shaped, "(--budget)") {
+		t.Errorf("a --budget of 1 forced every fallback attempt but the footer names no --budget cap:\n%s", shaped)
+	}
+	if want := "── showing 1 of 1 sessions (--budget)"; !strings.Contains(shaped, want) {
+		t.Errorf("footer does not name what the budget cap actually shaped: want a line containing %q, got:\n%s", want, shaped)
+	}
+
+	// The negative control: a --budget wide enough that the first attempt
+	// already fits gives up nothing, so the footer must name no --budget cap.
+	unshaped, _, err := callFind(t, fixtures.NeedleConversation, "--all", "--budget", "100000")
+	if err != nil {
+		t.Fatalf("find: %v", err)
+	}
+	if strings.Contains(unshaped, "(--budget)") {
+		t.Errorf("a --budget that needed no shaping still named a --budget cap:\n%s", unshaped)
+	}
+
+	// A second negative control: no --budget at all names no --budget cap
+	// either, which --limit's own line already covers but --budget must too.
+	noBudget, _, err := callFind(t, fixtures.NeedleConversation, "--all")
+	if err != nil {
+		t.Fatalf("find: %v", err)
+	}
+	if strings.Contains(noBudget, "(--budget)") {
+		t.Errorf("a call with no --budget at all named a --budget cap:\n%s", noBudget)
+	}
+}
+
+// TestTurnsNamesBudgetInTheFooterOnlyWhenItActuallyShapedTheAnswer mirrors
+// TestFindNamesBudgetInTheFooterOnlyWhenItActuallyShapedTheAnswer for turns's
+// own budget retry loop, which cmd_turns.go implements separately from
+// find's fitToBudget.
+func TestTurnsNamesBudgetInTheFooterOnlyWhenItActuallyShapedTheAnswer(t *testing.T) {
+	harness(t)
+
+	shaped, err := callTurns(t, fixtures.NeedleConversation, "--all", "--budget", "1")
+	if err != nil {
+		t.Fatalf("turns: %v", err)
+	}
+	if !strings.Contains(shaped, "(--budget)") {
+		t.Errorf("a --budget of 1 forced every retry but the footer names no --budget cap:\n%s", shaped)
+	}
+	if want := "── showing 1 of 1 matched turns (--budget)"; !strings.Contains(shaped, want) {
+		t.Errorf("footer does not name what the budget cap actually shaped: want a line containing %q, got:\n%s", want, shaped)
+	}
+
+	unshaped, err := callTurns(t, fixtures.NeedleConversation, "--all", "--budget", "100000")
+	if err != nil {
+		t.Fatalf("turns: %v", err)
+	}
+	if strings.Contains(unshaped, "(--budget)") {
+		t.Errorf("a --budget that needed no shaping still named a --budget cap:\n%s", unshaped)
+	}
+
+	noBudget, err := callTurns(t, fixtures.NeedleConversation, "--all")
+	if err != nil {
+		t.Fatalf("turns: %v", err)
+	}
+	if strings.Contains(noBudget, "(--budget)") {
+		t.Errorf("a call with no --budget at all named a --budget cap:\n%s", noBudget)
 	}
 }
 

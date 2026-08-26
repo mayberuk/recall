@@ -6,6 +6,15 @@ import (
 	"github.com/mayberuk/recall/internal/render"
 )
 
+// DefaultBudget is the token budget an MCP searching call gets when it names
+// none. The CLI's own default is zero — refuse rather than shape, so a human
+// typing --budget always means it — but an agent that says nothing has no
+// such intent to preserve, and the alternative is the full 64 KiB refusal cap
+// (cmd/recall/flags.go's DefaultMaxBytes) landing in its context on every
+// call. 4000 tokens is roughly a quarter of that cap at the four-bytes-per-
+// token rule cmd/recall/flags.go's BytesPerToken applies.
+const DefaultBudget = 4000
+
 // Searcher answers the four searching verbs and the guide. It is an interface
 // rather than a call into internal/scan so that the protocol surface and the
 // CLI share one assembly path: the coverage footer is this tool's honesty
@@ -55,7 +64,7 @@ type SearchArgs struct {
 
 	Brief    bool `json:"brief,omitempty" jsonschema:"one line per session, no snippets"`
 	NoUpdate bool `json:"no_update,omitempty" jsonschema:"search the archive as it stands, skipping the refresh from disk"`
-	Budget   int  `json:"budget,omitempty" jsonschema:"shape output to roughly this many tokens instead of refusing"`
+	Budget   int  `json:"budget,omitempty" jsonschema:"shape output to roughly this many tokens instead of refusing; defaults to 4000 when unset"`
 
 	Provider string `json:"provider,omitempty" jsonschema:"auto, an agent name, or all — which agent's transcripts are searched at all; this picks the corpus, where agent filters turns inside it"`
 }

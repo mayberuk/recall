@@ -426,7 +426,17 @@ func searchArgv(a mcp.SearchArgs) []string {
 
 	argv = boolArg(argv, a.Brief, "--brief")
 	argv = boolArg(argv, a.NoUpdate, "--no-update")
-	return intArg(argv, a.Budget, "--budget")
+
+	// A caller that names no budget still gets one: the CLI's own default is
+	// zero (refuse rather than shape), but an agent silent on the question has
+	// no such intent to preserve, and the alternative is the full refusal cap
+	// landing in its context on every call. An explicit budget, including one
+	// larger than the default, always wins.
+	budget := a.Budget
+	if budget == 0 {
+		budget = mcp.DefaultBudget
+	}
+	return intArg(argv, budget, "--budget")
 }
 
 // showArgv is show's own field list. Its two positional arguments are the

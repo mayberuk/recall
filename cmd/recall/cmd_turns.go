@@ -88,12 +88,20 @@ func turns(args []string, out io.Writer) error {
 		Matched: len(ranked),
 	}
 	pal := g.Palette(out)
-	build := func(limit, chars int) ([]byte, error) {
+	// shaped is true for every retry beyond the first — the ones that only run
+	// because the first was too big for --budget. --limit still names its own
+	// cut truthfully; --budget is why a retry ran at all.
+	build := func(limit, chars int, shaped bool) ([]byte, error) {
 		var limits []render.Limit
 		shown := ranked
 		if len(shown) > limit {
 			shown = shown[:limit]
 			limits = append(limits, render.Limit{Flag: "--limit", What: "matched turns", Shown: len(shown), Total: len(ranked)})
+		}
+		if shaped {
+			// When --limit already reports this same cut, fold --budget into
+			// that line instead of restating the identical shown/total below it.
+			limits = mergeBudgetLimit(limits, "matched turns", len(shown), len(ranked))
 		}
 		view.Passages = view.Passages[:0]
 		for _, m := range shown {
@@ -123,7 +131,7 @@ func turns(args []string, out io.Writer) error {
 	// Quoted passages are the bulkiest thing recall prints, so a budget buys
 	// shorter quotes first and fewer of them second — a caller that named a
 	// budget wants an answer that fits, not a refusal.
-	body, err := build(f.Limit, c.chars)
+	body, err := build(f.Limit, c.chars, false)
 	if err != nil {
 		return err
 	}
@@ -136,7 +144,7 @@ func turns(args []string, out io.Writer) error {
 			if int64(len(body)) <= g.Cap() {
 				break
 			}
-			if body, err = build(attempt.limit, attempt.chars); err != nil {
+			if body, err = build(attempt.limit, attempt.chars, true); err != nil {
 				return err
 			}
 		}
