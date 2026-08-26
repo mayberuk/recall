@@ -411,20 +411,23 @@ type searched struct {
 
 // search runs one query and returns the ranked sessions plus the raw scan,
 // which the coverage line needs for the counts it states.
+//
+// The nearby-terms survey runs here even when the scope is one repo and a
+// whole-machine probe is coming behind it that would survey the corpus anyway.
+// The survey is where a misspelling's replacement comes from, so declining it
+// costs the caller an answer their own repo holds and hands them a pointer to
+// another checkout instead. Its suggestions are still the weaker ones and
+// `find` still prefers the wider pass's, which is what makes the overlap
+// cost-only.
 func (c *corpus) search(q string, f *searchFlags, mode rank.Mode) searched {
 	sc := scopeOf(f)
 	res := scan.Search(inScope(c.turns, sc), scan.Query{
-		Text:     q,
-		Tiers:    c.tiers,
-		Exact:    f.Exact,
-		AllTerms: f.AllTerms,
-		Not:      f.Not,
-		Keep:     f.filter.keep(),
-		// A repo-scoped miss probes the whole machine next, and that pass
-		// surveys the corpus for nearby terms itself. Surveying the scoped
-		// slice first costs a second tokenizing pass for an answer strictly
-		// worse than the one about to replace it.
-		NearbyMax:  nearbySurvey(sc),
+		Text:       q,
+		Tiers:      c.tiers,
+		Exact:      f.Exact,
+		AllTerms:   f.AllTerms,
+		Not:        f.Not,
+		Keep:       f.filter.keep(),
 		CountWords: f.Words,
 	})
 	c.record(res)
@@ -548,15 +551,6 @@ func shellArg(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// nearbySurvey suppresses the terms-present-nearby pass where a wider one is
-// already coming. Negative skips it; zero takes scan's default.
-func nearbySurvey(sc render.Scope) int {
-	if sc.All || sc.Repo == "" {
-		return 0
-	}
-	return -1
-}
-
 func displayRepo(id string) string {
 	if id == "" {
 		return "(no repo recorded)"
@@ -590,6 +584,7 @@ func (c *corpus) coverageOf(res scan.Result, f *searchFlags, skipped drops, limi
 			Required: res.Match.Required,
 			Total:    res.Match.Total,
 			Carried:  res.Match.Carried,
+			Expanded: expansionViews(res.Match.Expanded),
 		},
 		Limits: append(limits, filterLimits(f, res)...),
 		Notes:  append(notes, c.notes(f, skipped)...),
@@ -707,6 +702,17 @@ func facetViews(facets []rank.Facet) []render.Facet {
 	out := make([]render.Facet, 0, len(facets))
 	for _, f := range facets {
 		out = append(out, render.Facet{Value: f.Value, Hits: f.Hits, Sessions: f.Sessions})
+	}
+	return out
+}
+
+func expansionViews(exps []scan.Expansion) []render.Expansion {
+	if len(exps) == 0 {
+		return nil
+	}
+	out := make([]render.Expansion, 0, len(exps))
+	for _, e := range exps {
+		out = append(out, render.Expansion{Term: e.Term, Variants: e.Variants, Distance: e.Distance})
 	}
 	return out
 }

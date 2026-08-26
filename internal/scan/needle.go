@@ -103,21 +103,54 @@ func indexNeedle(h, n []byte, at int) int {
 	return -1
 }
 
-// found reports whether folded carries this term. The zero-anchor case is
-// spelled out here rather than left to indexNeedle so that the overwhelmingly
-// common shape — one term, scanned against every turn in the corpus — reaches
-// bytes.Contains through one branch instead of two calls.
+// found reports whether folded carries this term, through the needle the caller
+// typed or any needle substituted for it. The zero-anchor case is spelled out
+// here rather than left to indexNeedle so that the overwhelmingly common shape —
+// one term, scanned against every turn in the corpus — reaches bytes.Contains
+// through one branch instead of two calls. For the same reason the substituted
+// needles sit behind a length test and a call of their own: alt is empty on
+// every search that found something, and this runs once per term per turn.
 func (t *term) found(folded []byte) bool {
 	if t.rare == 0 {
-		return bytes.Contains(folded, t.needle)
+		if bytes.Contains(folded, t.needle) {
+			return true
+		}
+	} else if indexNeedle(folded, t.needle, t.rare) >= 0 {
+		return true
 	}
-	return indexNeedle(folded, t.needle, t.rare) >= 0
+	if len(t.alt) == 0 {
+		return false
+	}
+	return t.altFound(folded)
 }
 
-// index is where this term first occurs in folded, or -1.
-func (t *term) index(folded []byte) int {
-	if t.rare == 0 {
-		return bytes.Index(folded, t.needle)
+func (t *term) altFound(folded []byte) bool {
+	for i := range t.alt {
+		if indexAt(folded, t.alt[i].needle, t.alt[i].rare) >= 0 {
+			return true
+		}
 	}
-	return indexNeedle(folded, t.needle, t.rare)
+	return false
+}
+
+// index is where this term first occurs in folded, or -1. The earliest needle
+// wins: a caller walking forward from one match must not step over an earlier
+// occurrence of another needle backing the same term.
+func (t *term) index(folded []byte) int {
+	best := indexAt(folded, t.needle, t.rare)
+	for i := range t.alt {
+		if at := indexAt(folded, t.alt[i].needle, t.alt[i].rare); at >= 0 && (best < 0 || at < best) {
+			best = at
+		}
+	}
+	return best
+}
+
+// indexAt is one needle's first occurrence, taking the same zero-anchor
+// shortcut found does and for the same reason.
+func indexAt(folded, needle []byte, rare int) int {
+	if rare == 0 {
+		return bytes.Index(folded, needle)
+	}
+	return indexNeedle(folded, needle, rare)
 }

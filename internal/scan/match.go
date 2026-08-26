@@ -60,17 +60,46 @@ type matcher struct {
 	// best five-term matches instead of falling off a cliff.
 	strict bool
 
+	// expanded is set when any term carries a substituted needle. It is the
+	// other way one turn's spans arrive out of offset order, and collect has to
+	// sort them for the same reason a multi-term query does.
+	expanded bool
+
 	dropped []string
 
 	// carried is scratch reused across turns: which terms the current turn has.
 	carried []bool
 }
 
+// term is one slot of the query. It is satisfied by the needle the caller typed
+// or by any needle in alt, and it stays one slot however many needles back it —
+// so mark, need and Match.Required are a function of the query's word count
+// alone and the AND-with-degrade contract does not move when a term is widened.
 type term struct {
 	text   string // the term as typed, folded
 	needle []byte // what is searched: the stem when expanding, else the term
 	rare   int    // index into needle of the byte the corpus scan anchors on
 	phrase bool   // came from quotes, so it is never stemmed and never dropped
+
+	// alt are needles searched in this term's place, added on the miss path and
+	// nil on every search that found something. The typed needle stays a field
+	// of its own rather than becoming alt[0], because a one-element slice per
+	// term is one allocation per term per search: BenchmarkSearch/small/
+	// single-term allocates 43 times in total, so the slice that never fires
+	// would be 2.3% of it against a 2% regression gate.
+	alt []variant
+}
+
+// variant is one substituted needle with its own anchor, because the rarest
+// byte of a corpus word is not the rarest byte of the word it stands in for.
+type variant struct {
+	needle []byte
+	rare   int
+}
+
+func newVariant(text string) variant {
+	n := []byte(text)
+	return variant{needle: n, rare: rarestByte(n)}
 }
 
 type rawTerm struct {
@@ -113,6 +142,29 @@ func (m *matcher) fork() matcher {
 	f := *m
 	f.carried = make([]bool, len(m.terms))
 	return f
+}
+
+// widen returns a matcher whose named terms also search the corpus words in
+// exps. The terms slice is copied rather than written through: the first walk's
+// answer was produced by the original, and a re-run that comes to nothing has to
+// leave it exactly as it stood.
+func (m *matcher) widen(exps []Expansion) matcher {
+	out := m.fork()
+	out.terms = slices.Clone(m.terms)
+	out.expanded = true
+	for _, e := range exps {
+		for i := range out.terms {
+			if out.terms[i].text != e.Term {
+				continue
+			}
+			alt := make([]variant, 0, len(e.Variants))
+			for _, v := range e.Variants {
+				alt = append(alt, newVariant(v))
+			}
+			out.terms[i].alt = alt
+		}
+	}
+	return out
 }
 
 func newTerm(r rawTerm, exact bool) term {
@@ -233,31 +285,27 @@ func (m matcher) excluded(folded []byte) bool {
 	return false
 }
 
-// collect appends every occurrence of every carried term to dst in offset
-// order.
+// collect appends every occurrence of every needle backing every carried term
+// to dst in offset order.
 //
 // Two matches at different offsets in one turn are two hits: ranking keys on
 // session, uuid, tier, offset, length and text, so collapsing them here would
-// undercount. Byte-identical spans, which two terms sharing a stem produce, are
-// the one case merged — they are the same match found twice.
+// undercount. Byte-identical spans, which two terms sharing a stem produce and
+// which two needles of one term produce when they overlap, are the one case
+// merged — they are the same match found twice.
 func (m *matcher) collect(dst []span, folded, raw []byte) []span {
 	dst = dst[:0]
 	for i := range m.terms {
 		if !m.carried[i] {
 			continue
 		}
-		needle := m.terms[i].needle
-		for base := 0; base+len(needle) <= len(folded); {
-			at := m.terms[i].index(folded[base:])
-			if at < 0 {
-				break
-			}
-			off := base + at
-			dst = append(dst, span{offset: off, length: len(needle), kind: classify(folded, raw, off, len(needle))})
-			base = off + len(needle)
+		t := &m.terms[i]
+		dst = appendSpans(dst, folded, raw, t.needle, t.rare)
+		for j := range t.alt {
+			dst = appendSpans(dst, folded, raw, t.alt[j].needle, t.alt[j].rare)
 		}
 	}
-	if len(m.terms) > 1 {
+	if len(m.terms) > 1 || m.expanded {
 		slices.SortFunc(dst, func(a, b span) int {
 			if d := cmp.Compare(a.offset, b.offset); d != 0 {
 				return d
@@ -265,6 +313,21 @@ func (m *matcher) collect(dst []span, folded, raw []byte) []span {
 			return cmp.Compare(a.length, b.length)
 		})
 		dst = slices.Compact(dst)
+	}
+	return dst
+}
+
+// appendSpans walks each needle separately: a span's length is its own
+// needle's, and two needles of one term rarely share a length.
+func appendSpans(dst []span, folded, raw, needle []byte, rare int) []span {
+	for base := 0; base+len(needle) <= len(folded); {
+		at := indexAt(folded[base:], needle, rare)
+		if at < 0 {
+			break
+		}
+		off := base + at
+		dst = append(dst, span{offset: off, length: len(needle), kind: classify(folded, raw, off, len(needle))})
+		base = off + len(needle)
 	}
 	return dst
 }

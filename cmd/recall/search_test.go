@@ -404,6 +404,95 @@ func TestRelaxedRepoScopedSearchSumsBytesAndPassesAcrossTheWiderProbe(t *testing
 	}
 }
 
+// A typo the corpus can answer is answered, and the footer the command prints
+// names the word it answered under. This is the whole chain — the scanner's
+// Match, coverageOf, and the rendered line — because a substitution that
+// happened without reaching the footer is exactly the silent answer-swap the
+// footer exists to prevent, and each half passing in isolation would not catch
+// a break between them.
+func TestATypoIsCorrectedAndTheCoverageFooterSaysSo(t *testing.T) {
+	turns := []schema.Turn{
+		{Session: "s1", UUID: "u1", Repo: "acme/mobile", Tier: schema.TierConversation,
+			Text: "the settlement batch cleared overnight"},
+	}
+	const line = "── no turn carries settlemint; searched settlement instead (1 edit away) — --exact to search only what you typed"
+
+	corrected := &corpus{turns: turns, tiers: []schema.Tier{schema.TierConversation}}
+	f := newSearchFlags()
+	f.All = true // the test process's own git scope would otherwise filter every synthetic turn out
+	if err := f.check(); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	s := corrected.search("settlemint", f, rank.Concentration)
+	if len(s.ranked.Sessions) != 1 {
+		t.Fatalf("%d sessions for a term one edit from the corpus's own word, want 1", len(s.ranked.Sessions))
+	}
+	if !hasLine(corrected.coverageOf(s.scan, f, s.skipped, nil).Lines(), line) {
+		t.Errorf("the footer never named the substitution\n%s", strings.Join(corrected.coverageOf(s.scan, f, s.skipped, nil).Lines(), "\n"))
+	}
+
+	// The control: --exact asked for the word as typed, so there is nothing to
+	// find and nothing to declare.
+	literal := &corpus{turns: turns, tiers: []schema.Tier{schema.TierConversation}}
+	e := newSearchFlags()
+	e.All, e.Exact = true, true
+	if err := e.check(); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	ex := literal.search("settlemint", e, rank.Concentration)
+	if len(ex.ranked.Sessions) != 0 {
+		t.Fatalf("%d sessions under --exact, want 0", len(ex.ranked.Sessions))
+	}
+	for _, l := range literal.coverageOf(ex.scan, e, ex.skipped, nil).Lines() {
+		if strings.Contains(l, "searched settlement instead") {
+			t.Errorf("--exact printed %q", l)
+		}
+	}
+}
+
+// A repo-scoped search surveys its own slice rather than leaving that to the
+// whole-machine probe behind it, because the survey is where a typo's
+// replacement comes from. Without it a misspelling the caller's own repo can
+// answer comes back as "found elsewhere", pointing at a checkout that is not
+// where the answer is.
+func TestARepoScopedTypoIsAnsweredInTheRepoRatherThanReportedElsewhere(t *testing.T) {
+	c := &corpus{
+		turns: []schema.Turn{
+			{Session: "s-here", UUID: "u1", Repo: "acme/scoped", Tier: schema.TierConversation,
+				Text: "the settlement batch cleared overnight"},
+			{Session: "s-there", UUID: "u2", Repo: "acme/other", Tier: schema.TierConversation,
+				Text: "unrelated words entirely"},
+		},
+		tiers: []schema.Tier{schema.TierConversation},
+	}
+	f := newSearchFlags()
+	f.Repo = "acme/scoped"
+	if err := f.check(); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	s := c.search("settlemint", f, rank.Concentration)
+
+	if len(s.ranked.Sessions) != 1 || s.ranked.Sessions[0].ID != "s-here" {
+		t.Fatalf("ranked %+v, want the one session in the scoped repo", s.ranked.Sessions)
+	}
+	if len(s.scan.Match.Expanded) != 1 || s.scan.Match.Expanded[0].Term != "settlemint" {
+		t.Errorf("Expanded %+v, want the substitution declared on the scoped search", s.scan.Match.Expanded)
+	}
+	elsewhere, _ := c.elsewhere("settlemint", f, s.scope)
+	if len(elsewhere) != 0 {
+		t.Errorf("elsewhere reported %+v, want nothing — the answer is in the scoped repo", elsewhere)
+	}
+}
+
+func hasLine(lines []string, want string) bool {
+	for _, l := range lines {
+		if l == want {
+			return true
+		}
+	}
+	return false
+}
+
 // TestElsewhereMemoisesTheWholeMachineProbe is the --budget retry loop's
 // invariant: fitToBudget can call elsewhere for the same query several times
 // in one command, and only the first has to pay for the scan.

@@ -36,6 +36,18 @@ type Query struct {
 	Required int      `json:"required"`
 	Total    int      `json:"total"`
 	Carried  []string `json:"carried,omitempty"`
+
+	// Expanded is the terms answered under a spelling the caller did not type,
+	// because no turn carried the one they did.
+	Expanded []Expansion `json:"expanded,omitempty"`
+}
+
+// Expansion is one term searched under another spelling: what was typed, the
+// corpus words put in its place, and how far from the typed term they are.
+type Expansion struct {
+	Term     string   `json:"term"`
+	Variants []string `json:"variants"`
+	Distance int      `json:"distance"`
 }
 
 // missing is the query terms no returned turn carries.
@@ -55,6 +67,14 @@ func (q Query) missing() []string {
 
 func (q Query) lines() []string {
 	var out []string
+	// Ahead of everything else, because it says what was searched rather than
+	// what the search then did: every line below describes the result of a query
+	// this one is still correcting.
+	for _, e := range q.Expanded {
+		out = append(out, fmt.Sprintf(
+			"── no turn carries %s; searched %s instead (%d %s away) — --exact to search only what you typed",
+			e.Term, strings.Join(e.Variants, ", "), e.Distance, plural(e.Distance, "edit", "edits")))
+	}
 	if q.Required > 0 && q.Required < q.Total {
 		line := fmt.Sprintf("── no turn carried all %d terms; showing turns carrying %d of %s",
 			q.Total, q.Required, strings.Join(q.Terms, ", "))
