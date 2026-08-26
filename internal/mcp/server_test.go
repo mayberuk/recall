@@ -134,6 +134,22 @@ func TestDiscoverAdvertises20260728AndNotTheLoggingCapability(t *testing.T) {
 	}
 }
 
+// The instructions paragraph and the first-call preamble (preamble.go) are
+// two carriers of the same fact, kept apart because client uptake of either
+// alone is inconsistent. This is the negative control that stops them
+// drifting: instructions must say the first search already carries the
+// guide, not just point at a still-mandatory round trip through recall_guide.
+func TestInitializeInstructionsNameTheFirstCallMechanism(t *testing.T) {
+	s, err := NewServer(Options{Version: "0.0.0-test", Searcher: &fakeSearcher{}})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	cs := connect(t, s)
+	if got := cs.InitializeResult().Instructions; !strings.Contains(got, "first search") {
+		t.Errorf("instructions do not mention the first-call preamble mechanism: %q", got)
+	}
+}
+
 // Under stdio, stdout is the protocol stream. One stray write from this
 // package corrupts it for the rest of the session, so exercise every path a
 // client can reach and assert stdout stayed empty.

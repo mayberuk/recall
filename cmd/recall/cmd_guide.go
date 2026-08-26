@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"io"
 	"os"
 )
@@ -8,7 +9,8 @@ import (
 func init() {
 	Register("guide", func(args []string) error { return guide(args, os.Stdout) })
 	Describe("guide", "", "read this first: which command answers which question", newFlags("guide"),
-		"recall guide")
+		"recall guide",
+		"recall guide --brief")
 }
 
 // guide is the one page a caller reads before its first query. It exists
@@ -18,11 +20,25 @@ func init() {
 // them.
 func guide(args []string, out io.Writer) error {
 	fs := newFlags("guide")
+	var brief bool
+	fs.BoolVar(&brief, "brief", false, "the compact page: what a caller cannot guess, none of what the tool descriptions and schemas already carry")
 	if _, err := parseArgs(fs, args); err != nil {
 		return err
 	}
-	_, err := io.WriteString(out, guideText)
+	text := guideText
+	if brief {
+		text = guideBrief
+	}
+	_, err := io.WriteString(out, text)
 	return err
+}
+
+// Preamble answers the MCP first-call mechanism (internal/mcp/preamble.go)
+// with the same page --brief prints. It is a method on verbSearcher, defined
+// here rather than in cmd_mcp.go, because guideBrief already lives in this
+// file and the two are meant to move together.
+func (s *verbSearcher) Preamble(context.Context) (string, error) {
+	return guideBrief, nil
 }
 
 const guideText = `recall — what was said in any past session of the selected agent, on this machine.
@@ -43,10 +59,16 @@ HOW A QUERY IS READ
   "quoted words"    one phrase, matched together
   --all-terms       require every term; return nothing rather than a partial match
   --not <term>      skip turns carrying it; repeatable
-  --exact           no stem expansion
+  --exact           no stem expansion, no near-neighbor correction, no synonyms
   Common words are dropped from queries longer than two terms, and it says so.
-  Matching is case-insensitive and matches inside words: "build" finds "iosBuild",
-  ranked below a whole-word match.
+  Matching is case-insensitive and matches inside words: "build" finds "iosBuild"
+  and ranks it as a whole word, because a camelCase or acronym boundary counts
+  as a word edge; a plain substring inside one segment still ranks lower.
+  A term nothing carries may be corrected to a one-edit neighbor the corpus
+  has; two edits away is only suggested, never substituted. A small shipped
+  synonym table also searches the other spelling of some terms (auth,
+  authentication; db, database), matched only as a whole word. The footer
+  names either one when it fires.
 
 WHAT IS SEARCHED, AND WHAT IS NOT
   Conversation only, by default. Tool output is 58% of the store and is only
@@ -96,4 +118,41 @@ RECIPES
   recall turns "why did we pick bitrise" --all
   recall find agvtool --ids | head -1 | xargs recall show
   recall when codepush --brief
+`
+
+// guideBrief is what a caller cannot guess and would otherwise get wrong:
+// how a query is read, what is searched, and the footer contract. It drops
+// which command answers which question (the tool descriptions already carry
+// it), narrowing flags (the argument schemas already carry them), machine
+// forms and recipes (CLI-only). recall guide --brief prints it, and it is
+// what the first MCP searching call of a server process carries once.
+const guideBrief = `recall — what was said in any past session of the selected agent, on this machine.
+
+HOW A QUERY IS READ
+  Terms are ANDed; a query no turn carries in full degrades to the turns
+  carrying the most of it, and the footer names which terms those were.
+  "quoted words" match together. --all-terms requires every term. --not <term>
+  skips turns carrying it. --exact turns off stemming, near-neighbor
+  correction and the synonym table below.
+  Matching is case-insensitive and matches inside words, and a camelCase or
+  acronym boundary ranks as a whole word, not a lesser inside match.
+  A term nothing carries may be corrected to a one-edit neighbor the corpus
+  actually has; two edits away is only suggested. A small shipped synonym
+  table also searches the other spelling of some terms (auth, authentication;
+  db, database), matched only as a whole word.
+
+WHAT IS SEARCHED, AND WHAT IS NOT
+  Conversation only, by default; --results adds tool output, --tools adds
+  command lines. Only the current repo, across its checkouts; --all reaches
+  the machine. Your own session and recall's own past output are excluded;
+  --include-self and --include-recall undo that.
+  Every narrowing above, plus any correction or synonym substitution, is
+  printed in the ── footer. If the footer does not mention it, it did not
+  happen.
+
+EXIT CODES
+  0 hits   1 ran and matched nothing   2 bad usage   3 archive unreadable
+  4 refused for size (--max-bytes)
+
+recall guide — the full page: every command, every flag, recipes.
 `
