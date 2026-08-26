@@ -33,10 +33,8 @@ func guide(args []string, out io.Writer) error {
 	return err
 }
 
-// Preamble answers the MCP first-call mechanism (internal/mcp/preamble.go)
-// with the same page --brief prints. It is a method on verbSearcher, defined
-// here rather than in cmd_mcp.go, because guideBrief already lives in this
-// file and the two are meant to move together.
+// Preamble implements mcp.Searcher for the first-call mechanism in
+// internal/mcp/preamble.go, answering the same page --brief prints.
 func (s *verbSearcher) Preamble(context.Context) (string, error) {
 	return guideBrief, nil
 }
@@ -120,12 +118,9 @@ RECIPES
   recall when codepush --brief
 `
 
-// guideBrief is what a caller cannot guess and would otherwise get wrong:
-// how a query is read, what is searched, and the footer contract. It drops
-// which command answers which question (the tool descriptions already carry
-// it), narrowing flags (the argument schemas already carry them), machine
-// forms and recipes (CLI-only). recall guide --brief prints it, and it is
-// what the first MCP searching call of a server process carries once.
+// guideBrief keeps what a caller cannot guess elsewhere — how a query is
+// read, what is searched, the footer contract — and drops what the tool
+// descriptions, argument schemas, or the CLI itself already carry.
 const guideBrief = `recall — what was said in any past session of the selected agent, on this machine.
 
 HOW A QUERY IS READ

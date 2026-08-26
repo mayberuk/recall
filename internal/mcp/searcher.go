@@ -23,10 +23,7 @@ type Searcher interface {
 	Guide(ctx context.Context) (string, error)
 
 	// Preamble is the compact guide prepended to the first searching tool
-	// result of a server process (see preamble.go). It is answered separately
-	// from Guide so a caller that never triggers the mechanism pays nothing for
-	// it, and so the two can diverge in size without either call's contract
-	// changing.
+	// result of a server process (see preamble.go).
 	Preamble(ctx context.Context) (string, error)
 }
 

@@ -7,9 +7,6 @@ import (
 	"testing"
 )
 
-// The sentence this guards against shipped a documented lie: recall already
-// ranked a camelCase-boundary match as a whole word, not below one, and the
-// guide told every agent reading it the opposite.
 func TestGuideDoesNotClaimAnIdentifierMatchRanksBelowAWholeWord(t *testing.T) {
 	for name, text := range map[string]string{"guideText": guideText, "guideBrief": guideBrief} {
 		if strings.Contains(text, "ranked below a whole-word match") {
@@ -21,9 +18,6 @@ func TestGuideDoesNotClaimAnIdentifierMatchRanksBelowAWholeWord(t *testing.T) {
 	}
 }
 
-// Two semantics landed in earlier phases that an agent cannot discover on
-// its own: a one-edit correction on a miss, and the shipped synonym table.
-// Both must be named in both pages, along with the footer declaring them.
 func TestGuidesDescribeNearNeighborCorrectionAndSynonymExpansion(t *testing.T) {
 	for name, text := range map[string]string{"guideText": guideText, "guideBrief": guideBrief} {
 		if !strings.Contains(text, "one-edit") {
@@ -41,8 +35,6 @@ func TestGuidesDescribeNearNeighborCorrectionAndSynonymExpansion(t *testing.T) {
 	}
 }
 
-// The negative control for the two tests above: a query recall does not
-// correct or expand must not be described as if it were.
 func TestGuidesDoNotClaimLearnedOrPerCorpusSynonyms(t *testing.T) {
 	for name, text := range map[string]string{"guideText": guideText, "guideBrief": guideBrief} {
 		if strings.Contains(text, "learned") || strings.Contains(text, "per-corpus") {
@@ -51,9 +43,7 @@ func TestGuidesDoNotClaimLearnedOrPerCorpusSynonyms(t *testing.T) {
 	}
 }
 
-// guideBrief exists to cut the per-session cost of reading the full guide,
-// so its size relative to guideText is the deliverable, not a fixed byte
-// count either would drift past.
+// The ratio, not a fixed byte count, is the deliverable — either text drifts.
 func TestGuideBriefIsRoughlyAThirdOfGuideTextsSize(t *testing.T) {
 	ratio := float64(len(guideBrief)) / float64(len(guideText))
 	if ratio < 0.2 || ratio > 0.55 {
@@ -62,9 +52,6 @@ func TestGuideBriefIsRoughlyAThirdOfGuideTextsSize(t *testing.T) {
 	}
 }
 
-// guideBrief keeps the sections a caller cannot get elsewhere and drops the
-// ones the tool descriptions, argument schemas, or the CLI itself already
-// carry.
 func TestGuideBriefKeepsLoadBearingSectionsAndDropsCLIOnlyOnes(t *testing.T) {
 	for _, want := range []string{"HOW A QUERY IS READ", "WHAT IS SEARCHED", "EXIT CODES", "footer"} {
 		if !strings.Contains(guideBrief, want) {
@@ -78,8 +65,6 @@ func TestGuideBriefKeepsLoadBearingSectionsAndDropsCLIOnlyOnes(t *testing.T) {
 	}
 }
 
-// recall guide --brief is the CLI surface for guideBrief; without it, the
-// text exists but nothing reaches it.
 func TestGuideBriefFlagPrintsTheCompactPage(t *testing.T) {
 	var out bytes.Buffer
 	if err := guide([]string{"--brief"}, &out); err != nil {
@@ -98,8 +83,6 @@ func TestGuideBriefFlagPrintsTheCompactPage(t *testing.T) {
 	}
 }
 
-// verbSearcher.Preamble is what internal/mcp's first-call mechanism calls;
-// it must answer the same compact page --brief prints, not a third text.
 func TestVerbSearcherPreambleAnswersGuideBrief(t *testing.T) {
 	s := newVerbSearcher(nil)
 	got, err := s.Preamble(context.Background())

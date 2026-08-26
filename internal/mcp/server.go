@@ -20,10 +20,9 @@ import (
 
 // instructions is what a client shows the model before its first call. It
 // points at the guide rather than restating it, because the guide is a page
-// and this is a paragraph. It stays even though the first searching call
-// already carries the same page (see preamble.go): client uptake of
-// instructions is inconsistent — Claude Desktop stores it and never shows the
-// model — so this is a second carrier, not a redundant one.
+// and this is a paragraph. It stays despite preamble.go's first-call
+// duplicate: client uptake of instructions is inconsistent — Claude Desktop
+// stores it but never shows the model.
 const instructions = "recall searches the transcripts of past coding-agent sessions on this machine. " +
 	"The first search call already returns a compact guide alongside its answer, once per session: how " +
 	"a query is read, what is searched by default, and what the coverage footer names when it corrects " +

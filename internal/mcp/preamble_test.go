@@ -8,10 +8,6 @@ import (
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// A test that only checked the preamble appears once would pass on a build
-// that shows it on every call and happens to be exercised only once, or on
-// one that never shows it and happens to be checked only after a call that
-// skipped it. The two calls below are the negative control against both.
 func TestPreambleAppearsOnTheFirstSearchingCallAndNeverAgain(t *testing.T) {
 	fake := &fakeSearcher{
 		preamble: "PREAMBLE: read this once.",
@@ -40,9 +36,6 @@ func TestPreambleAppearsOnTheFirstSearchingCallAndNeverAgain(t *testing.T) {
 	}
 }
 
-// recall_guide is not a searching tool: its own answer never carries the
-// preamble, and calling it first must not consume the one slot a later
-// searching call is owed.
 func TestGuideNeitherCarriesNorConsumesThePreamble(t *testing.T) {
 	fake := &fakeSearcher{
 		preamble: "PREAMBLE",
@@ -63,9 +56,6 @@ func TestGuideNeitherCarriesNorConsumesThePreamble(t *testing.T) {
 	}
 }
 
-// An empty preamble (a misconfigured Searcher) must not surface as an empty
-// text block, and must not stall the mechanism: the slot is still spent, and
-// a later call sees no preamble either.
 func TestAnEmptyPreambleAddsNoBlockAndStillSpendsTheSlot(t *testing.T) {
 	fake := &fakeSearcher{find: render.Find{Query: "x"}, turns: render.Turns{Query: "x"}}
 	cs := serve(t, fake)
@@ -76,17 +66,9 @@ func TestAnEmptyPreambleAddsNoBlockAndStillSpendsTheSlot(t *testing.T) {
 	}
 }
 
-// The mechanism must reuse the JSON block the generic tool wrapper already
-// built rather than reconstruct one, because a reconstruction taken straight
-// from the answer value would not match: mcp/tool.go's applySchema always
-// re-marshals object-shaped output from a map, and Go marshals a map's keys
-// sorted while it marshals a struct in declaration order — render.Find's own
-// field order is not alphabetical (verb, query, scope, sort, hits, ...), so a
-// naive json.Marshal(out) block would diverge from structuredContent right
-// here. capture reads the server-side result before the wire serializes it,
-// which is the only place the comparison is meaningful without a JSON
-// decode-and-remarshal on the client side masking the very divergence this
-// guards against.
+// capture reads the result server-side, before the wire serializes it —
+// comparing after a client-side JSON decode would remarshal both sides and
+// mask the divergence this test guards against.
 func TestPreambleBlockLeavesTheCompatibilityBlockByteIdenticalToStructuredContent(t *testing.T) {
 	fake := &fakeSearcher{
 		preamble: "PREAMBLE: read this once.",
@@ -134,9 +116,6 @@ func TestPreambleBlockLeavesTheCompatibilityBlockByteIdenticalToStructuredConten
 	}
 }
 
-// textAt is one content block's text. Unlike soleText in tools_test.go, it
-// does not require the block to be alone — the preamble tests need to read a
-// specific block out of two.
 func textAt(t *testing.T, res *mcpsdk.CallToolResult, i int) string {
 	t.Helper()
 	if i >= len(res.Content) {
