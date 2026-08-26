@@ -43,6 +43,13 @@ const stars = repo.stars >= 10 ? repo.stars.toLocaleString('en-US') : '';
           <a href={n.href} aria-current={n.key === current ? 'page' : undefined}>{n.label}</a>
         ))}
       </nav>
+      <!-- Hidden until its script runs: a control that cannot change anything
+           is worse than one that is not offered. -->
+      <div class="theme" role="group" aria-label="Colour theme" hidden>
+        {[['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(([v, label]) => (
+          <button type="button" data-theme={v} aria-pressed="false">{label}</button>
+        ))}
+      </div>
       <a class="star" href="https://github.com/mayberuk/recall"
          rel="noopener" aria-label="Star recall on GitHub">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d={siGithub.path} /></svg>

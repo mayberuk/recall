@@ -88,6 +88,15 @@ const schemaKeywords = identity.keywords;
 <link rel="preload" as="font" type="font/woff2" href="/fonts/bigshoulders.woff2" crossorigin />
 <link rel="preload" as="font" type="font/woff2" href="/fonts/archivo.woff2" crossorigin />
 <script type="application/ld+json" set:html={JSON.stringify(graph)}></script>
+<script is:inline>
+  /* Before the first paint, so a reader who chose a theme never watches the
+     other one appear first. No stored choice leaves the attribute off, which
+     is what hands the decision back to prefers-color-scheme. */
+  try {
+    var t = localStorage.getItem('recall-theme');
+    if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+  } catch (e) {}
+</script>
 </head>
 <body>
 <!--
@@ -106,6 +115,33 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 <a class="skip" href="#main">Skip to content</a>
 <slot />
 <script is:inline>
+  /* The theme control. Three states, and `auto` is a real one: it removes the
+     attribute rather than writing today's system value, so a reader who
+     switches their machine to night later gets night here too. */
+  (function () {
+    var box = document.querySelector('.theme');
+    if (!box) return;
+    var read = function () {
+      try { return localStorage.getItem('recall-theme') || 'auto'; } catch (e) { return 'auto'; }
+    };
+    var paint = function (v) {
+      box.querySelectorAll('button').forEach(function (b) {
+        b.setAttribute('aria-pressed', b.dataset.theme === v ? 'true' : 'false');
+      });
+    };
+    box.addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (!b) return;
+      var v = b.dataset.theme;
+      if (v === 'auto') delete document.documentElement.dataset.theme;
+      else document.documentElement.dataset.theme = v;
+      try { v === 'auto' ? localStorage.removeItem('recall-theme') : localStorage.setItem('recall-theme', v); } catch (err) {}
+      paint(v);
+    });
+    paint(read());
+    box.hidden = false;
+  })();
+
   /* One delegated handler for every copyable code block on every page. The
      text copied is the source the block was built from, not the rendered
      spans, because what lands on a clipboard has to be what a shell accepts. */

@@ -1,26 +1,26 @@
 ---
 name: recall
-description: Continuous-feed ledger stock, a deck log that records what it did not find
+description: Warm ledger stock, a deck log that records what it did not find
 colors:
-  stock: "#e3e7e1"
-  stock-2: "#edefe9"
-  stock-3: "#d3dad4"
-  ink: "#14181c"
-  ink-2: "#4b5760"
-  ink-ghost: "rgba(20,24,28,.36)"
-  rule: "#1f4e79"
-  rule-faint: "rgba(31,78,121,.28)"
-  rule-hair: "rgba(31,78,121,.15)"
-  stamp: "#bd1e61"
-  stamp-wash: "rgba(189,30,97,.12)"
-  ledger: "#2f6b4f"
-  ledger-band: "rgba(47,107,79,.14)"
-  ledger-wash: "rgba(47,107,79,.13)"
-  carbon: "#8a5a12"
-  carbon-wash: "rgba(138,90,18,.12)"
-  field-bg: "#1f4e79"
-  field-ink: "#edefe9"
-  hole: "#c2cbc4"
+  stock: "#f0ebdd"
+  stock-2: "#f7f3e8"
+  stock-3: "#e2dac6"
+  ink: "#1c1a15"
+  ink-2: "#57503f"
+  ink-ghost: "rgba(28,26,21,.36)"
+  rule: "#1d4a6d"
+  rule-faint: "rgba(29,74,109,.3)"
+  rule-hair: "rgba(29,74,109,.16)"
+  stamp: "#b41d51"
+  stamp-wash: "rgba(180,29,81,.11)"
+  ledger: "#2c6549"
+  ledger-band: "rgba(44,101,73,.13)"
+  ledger-wash: "rgba(44,101,73,.11)"
+  carbon: "#8a5510"
+  carbon-wash: "rgba(138,85,16,.11)"
+  field-bg: "#1d4a6d"
+  field-ink: "#f4f0e5"
+  hole: "#d5cbb2"
 typography:
   display:
     fontFamily: "Big Shoulders Display, ui-sans-serif, system-ui, sans-serif"
@@ -108,8 +108,11 @@ components:
 
 ## Overview
 
-**North star: continuous-feed ledger stock.** The page is a length of green-bar printout:
-sprocket strips down both edges, banded rows, perforated tears between entries. It comes from the
+**North star: continuous-feed ledger stock.** The page is a length of green-bar printout on warm
+bookkeeping paper: sprocket strips down both edges, banded rows, perforated tears between entries.
+The stock is an oatmeal cream with a red bias, never the cool blue-white a screen defaults to.
+Dark is the same run read under a chart lamp, and a three-state control in the masthead lets a
+reader pin either or leave it to their system. It comes from the
 naval deck log, the one document form whose governing discipline is that *nothing to report* is a
 required entry. That is recall's coverage footer, and its `exit 1`, four centuries early.
 

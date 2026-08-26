@@ -17,7 +17,7 @@ const acts = [
     q: 'idempotency',
     took: '2 sessions · 5 hits · 6 ms',
     cols: ['Session', 'Date', 'Project', 'Branch', 'Found'],
-    note: 'The top answer is in a second checkout, on a branch deleted locally months ago.',
+    note: 'The top answer is in a checkout deleted months ago. recall keys a repo on its git remote, so every clone of it is one history.',
     hits: [
       { id:'6e2b8d15', date:'2026-06-03', repo:'github.com/acme/payments', branch:'hotfix/dedupe', count:'4 hits in 3 turns', remarks:[
         { who:'human', me:true, text:'Duplicate charges again. Two merchants hit the same idempotency key and one of them saw the other’s receipt. How do we scope these keys?' },
@@ -46,7 +46,7 @@ const acts = [
     q: 'merchant',
     took: '2 passages · 0.6 ms · ~180 tokens',
     cols: ['Passage', 'Date', 'Project', 'Branch', 'Rank'],
-    note: 'turns skips the session and hands over the passage, ranked across all of them at once.',
+    note: 'turns skips the session and hands you the passage, ranked across all of them at once.',
     hits: [
       { id:'6e2b8d15:0001', date:'2026-06-03', repo:'github.com/acme/payments', branch:'hotfix/dedupe', count:'1st', remarks:[
         { who:'assistant', me:false, text:'…a global namespace means any two clients picking order-1 collide, and the collision does not fail loudly: it returns the first caller’s stored response to the second. Make the storage key the pair (merchant_id, idempotency_key).' } ] },
@@ -166,11 +166,6 @@ const schema = [
 <section class="flush">
   <div class="wrap">
     <div class="run" id="run">
-      <p class="runHead">
-        <span class="cap">Session log · live run</span>
-        <span class="runFrom data">run from ~/src/payments</span>
-        <button type="button" class="runPlay" id="runPlay" aria-pressed="false" hidden>Pause</button>
-      </p>
       <p class="ask" id="askLine">
         <span class="prompt" aria-hidden="true">$</span><span
         class="typed" id="typed">{first.cmd}</span><span
@@ -199,17 +194,16 @@ const schema = [
         </table>
         <div class="carriage" aria-hidden="true"></div>
       </div>
-      <p class="runNote" id="runNote">{first.note}</p>
     </div>
-    <p class="ask jump" id="jump" hidden>
-      <span class="cap jumpCap">Jump to</span>{acts.map((a,i) => (
+    <p class="runNote" id="runNote">{first.note}</p>
+    <p class="runBar" id="jump" hidden>
+      <span class="runFrom">run from ~/src/payments</span>
+      {acts.map((a,i) => (
         <button type="button" class:list={['q', i === 0 && 'on']} data-act={i}
                 aria-pressed={i === 0 ? 'true' : 'false'}>{a.cmd.replace('recall ', '')}</button>
       ))}
+      <button type="button" class="runPlay" id="runPlay" aria-pressed="false" hidden>Pause</button>
     </p>
-    <p class="runAfter">Nothing above was set up. recall recognises a project by its
-    <span class="hl-g">git remote</span>, so every clone, worktree and deleted branch you have ever
-    worked in is one history.</p>
   </div>
 </section>
 
@@ -218,12 +212,17 @@ const schema = [
     <h2>You won’t remember the <span class="hl">words</span> you used</h2>
     <p>So it doesn’t make you guess. <code class="data">build</code> finds <code class="data">iosBuild</code>.
     <code class="data">retries</code> finds <code class="data">retry</code>. Case never matters.</p>
-    <div class="miss" id="miss"><pre>no turns carry "connection pooling" in github.com/acme/payments
-  connection          14 turns carry it, but not together with the rest
-  pooling             no turn carries it; nearby: <b>pool, pooled, pools</b>
+    <div class="miss" id="miss">
+      <p class="ask missAsk"><span class="prompt" aria-hidden="true">$</span><span
+        class="typed">recall find <span class="t-s">"connection pooling"</span></span></p>
+      <pre>no turns carry <span class="t-s">"connection pooling"</span> in <span class="t-b">github.com/acme/payments</span>
+  <span class="t-f">connection</span>          14 turns carry it, but not together with the rest
+  <span class="t-f">pooling</span>             no turn carries it; nearby: <span class="t-g">pool, pooled, pools</span>
 found elsewhere: 5 hits in 1 other repo
-  github.com/acme/infra                    5 hits · 1 session
-run: recall find 'connection pooling' --all</pre><div class="carriage" aria-hidden="true"></div></div>
+  <span class="t-b">github.com/acme/infra</span>                    <span class="t-g">5 hits</span> · 1 session
+<span class="t-c">run:</span> <span class="t-b">recall</span> <span class="t-v">find</span> <span class="t-s">'connection pooling'</span> <span class="t-f">--all</span></pre>
+      <div class="carriage" aria-hidden="true"></div>
+    </div>
     <p class="after">Empty-handed, it still hands you the
     <span class="hl-g">closest words in your own history</span>, and points at the project the
     answer is actually in.</p>

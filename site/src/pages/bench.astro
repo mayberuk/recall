@@ -89,10 +89,10 @@ const schema = [{
 <div class="hero benchHero">
   <div class="wrap">
     <p class="cap">Form B · measured {bench.measured.slice(0, 10)}</p>
-    <h1>Every number, and <em>where it came from.</em></h1>
-    <p class="lede">recall publishes its benchmarks in full, including the slow ones. Every figure
-    below runs against a corpus generated from a fixed seed rather than anybody’s session store, so
-    the same three commands reproduce this page on your machine.</p>
+    <h1>Benchmarks</h1>
+    <p class="lede">Every figure recall publishes, including the slow ones. All of them run against
+    a corpus generated from a fixed seed rather than anybody’s session store, so the three commands
+    below reproduce this page on your machine.</p>
     <dl class="figs benchFigs">{headline.map(f => (
       <div><dt>{f.n}</dt><dd><b>{f.k}</b><span>{f.s}</span></dd></div>
     ))}</dl>
@@ -105,10 +105,10 @@ const schema = [{
 
 <section>
   <div class="wrap">
-    <h2>The <span class="hl-g">ceilings</span>, and the distance to them</h2>
-    <p>A gate is a wall-clock limit that fails the build when it is crossed. What matters is not
-    the measurement but the gap: the margin is what has to survive a year of changes, and the
-    tightest of the seven is <b>{Math.round(tightest.factor)}×</b>.</p>
+    <h2>Wall-clock gates</h2>
+    <p>A gate is a time limit that fails the build when it is crossed. What matters is not the
+    measurement but the gap, because the margin is what has to survive a year of changes. The
+    tightest of the seven runs <b>{Math.round(tightest.factor)}×</b> under its limit.</p>
     <ol class="gates" id="gates">
       {gates.map(g => (
         <li>
@@ -123,14 +123,14 @@ const schema = [{
         </li>
       ))}
     </ol>
-    <p class="data foot">The bar is the measurement drawn against its own ceiling. Six of the seven
-      are too small to see at this scale, which is the point of drawing them.</p>
+    <p class="data foot">Each bar is the measurement drawn against its own limit. Six of the seven
+      are too small to see at this scale.</p>
   </div>
 </section>
 
 <section>
   <div class="wrap">
-    <h2>The binary, <span class="hl">end to end</span></h2>
+    <h2>Commands, end to end</h2>
     <p>Process spawn to exit, for every command and every flag that changes the shape of the work.
     Small is about 5 MB of transcript; medium is about 50 MB. The <b>output bytes</b> column is
     what an agent pays to read the answer.</p>
@@ -167,7 +167,7 @@ const schema = [{
 
 <section>
   <div class="wrap">
-    <h2>Inside the <span class="hl">process</span></h2>
+    <h2>Micro benchmarks</h2>
     <p>The Go benchmarks, grouped by what they measure. Allocation counts are gated separately:
     <code class="data">make bench-compare</code> fails on a regression against a committed baseline,
     which is why the numbers in the last column are worth printing at all.</p>
@@ -198,7 +198,7 @@ const schema = [{
 
 <section>
   <div class="wrap">
-    <h2>What was <span class="hl-g">measured</span> against</h2>
+    <h2>The corpus</h2>
     <p>A session store generated from a seed, never a private one. The generator reproduces the
     tier shape of a working store: conversation, tool commands and tool output hold 20.0% / 40.5% /
     39.5% of the turns and 16.1% / 8.4% / 75.5% of the bytes, and every corpus lands within 2% of
@@ -225,7 +225,7 @@ const schema = [{
       </table>
     </div>
     <div class="cov honest">
-      <p><b>The caveat this page will not bury.</b> The generator is denser than a real store:
+      <p><b>One caveat.</b> The generator is denser than a real store:
       about 72% of its on-disk bytes strip into text, where a real store measured at 1,402 MB of
       JSONL yielded only 244 MB, roughly 17%. The tier ratio still holds, so comparing an all-tier
       figure against its conversation-tier neighbour is sound. An absolute figure like a cold strip
