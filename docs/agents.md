@@ -17,6 +17,14 @@ recall's own source, you want [AGENTS.md](../AGENTS.md) instead.
 - Every searching command declares what it did **not** search (tier, scope, exclusions) in a
   `──` footer. If the footer doesn't mention a narrowing, that narrowing didn't happen. Treat
   the footer as the coverage contract, not decoration.
+- A term no returned turn carries may be corrected to a one-edit neighbor the corpus actually
+  has, and the footer names the substitution (`── no turn carries … instead …`); a neighbor two
+  edits away is only ever suggested, never substituted. A small shipped synonym table
+  (`auth`/`authentication`, `db`/`database`, and a few dozen more) also searches the other
+  spelling of some terms, matched only as a whole word, and the footer names the table and its
+  version when it fires (`── also searched … shipped synonyms, vN`). The table is curated and
+  shipped, never learned or derived from a corpus, so the same query answers the same way on any
+  machine. `--exact` turns off both.
 - The footer's `── scanned …` line is what the search cost: bytes, turns, and wall clock.
   `--words` adds the words scanned and the lines carrying them. It is opt-in because counting
   them is a second pass over bytes already read; without it the line says nothing about words
@@ -24,6 +32,10 @@ recall's own source, you want [AGENTS.md](../AGENTS.md) instead.
 - `RECALL_NO_STATS`, set to any non-empty value, leaves that line off the footer entirely and
   the `stats` object out of `--json` and `--format jsonl`. That is for a caller diffing two
   runs against each other, where a wall-clock figure can never be byte-identical.
+- MCP searching tools apply a default token budget (4000) when a caller names none, so an
+  answer never lands unshaped in a session's context; the CLI's own default is 0, which refuses
+  above `--max-bytes` instead of shaping. An explicit budget, including one larger than the
+  default, always wins, and the footer names `--budget` when it shaped the answer.
 
 ## Choosing whose transcripts to read
 

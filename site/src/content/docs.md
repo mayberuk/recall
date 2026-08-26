@@ -141,15 +141,36 @@ The map above, plus query semantics, printed to the terminal. Written for an age
 open a documentation page but will run one command whose output then sits in its context for the
 rest of the session.
 
+```
+recall guide
+recall guide --brief
+```
+
+`--brief` prints the compact page instead: how a query is read, what is searched, and the
+footer contract, without the command map or the recipes. It is the same page an MCP client's
+first searching tool call already carries inline, so a client that reads it that way never needs
+to call `recall_guide` at all; `recall guide` alone still prints the full page.
+
 ## How a query is read
 
 Terms are **ANDed**. When no turn carries them all you get the turns carrying the most, and a line
 saying which terms were dropped. A query that misses does not come back silently empty.
 
+Matching is case-insensitive and matches inside words: `build` finds `iosBuild`, and a camelCase
+or acronym boundary ranks that match as a whole word, not a lesser inside match.
+
 - `"quoted words"` match as a phrase.
 - `--all-terms` requires every term, returning nothing rather than the best partial match.
 - `--not <term>` skips turns carrying that term. Repeatable.
-- `--exact` matches literally, without stem expansion.
+- `--exact` matches literally: no stem expansion, no near-neighbor correction, no synonym table.
+
+A term no turn carries may be corrected to a one-edit neighbor the corpus actually has, and the
+footer names the substitution; a neighbor two edits away is only ever suggested, never
+substituted. A small shipped synonym table also searches the other spelling of some terms
+(`auth`/`authentication`, `db`/`database`, and a few dozen more curated pairs), matched only as a
+whole word, and the footer names the table and its version when it fires. The table is curated
+and shipped, never learned or derived from a corpus, so the same query answers the same way on
+any machine.
 
 Session ids match on **any unique prefix**, so `recall show 5fd86b00` is enough.
 
@@ -225,6 +246,9 @@ Colour may add to an answer but never subtract from it. Stripping the escapes re
 bytes exactly, which is why every size recall reports stays honest with colour on. It is also
 structurally unable to reach `--json`, `--format jsonl`, `--ids` or the fzf record stream.
 
+`recall guide --brief` is the one place `--brief` means something else: not one line per session,
+but the compact guide page in place of the full one. See [`recall guide`](#recall-guide) above.
+
 ## For calling agents
 
 ### Exit codes
@@ -297,6 +321,17 @@ command line can never disagree about what the corpus holds. Every tool result c
 coverage block, so an agent can read what was skipped rather than assume nothing was.
 
 Search defaults to the current repo. Pass `all: true` to reach every repo on the machine.
+
+A searching tool call that names no `budget` still gets one: 4000 tokens by default, so an answer
+never lands unshaped in a session's context. The CLI's own default is `0`, which refuses outright
+above `--max-bytes` instead. A human typing `--budget` always means it, but an agent that says
+nothing has no such intent to preserve. An explicit `budget`, including one larger than the
+default, always wins, and the coverage footer names `--budget` when it shaped the answer.
+
+The first `recall_find`, `recall_turns`, `recall_show` or `recall_when` call of a server process
+also carries a compact guide ahead of its own answer, the same page `recall guide --brief`
+prints, so a client reaches for recall correctly from its first call without a round trip to
+`recall_guide` first. That happens once per process, not once per call.
 
 ## Staying current
 

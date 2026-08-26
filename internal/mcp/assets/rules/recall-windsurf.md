@@ -9,8 +9,20 @@ Reach for the recall MCP tools (recall_find, recall_turns, recall_show, recall_w
 recall_guide) or the `recall` command line before re-deriving something a past session
 already settled.
 
-Call recall_guide (or `recall guide`) first; it explains how a query is read and what
-is searched by default. Only the conversation tier is searched unless `results` is set;
-scope defaults to the current repo unless `all` is set. Session ids match on any unique
-prefix. Terms are ANDed, and a long query degrades to the best partial match rather
-than returning nothing, and the answer's footer says which terms those were.
+The first searching MCP call of a session already carries a compact guide inline: how a
+query is read, what is searched by default, the footer contract. So there is no round
+trip to make before the first search. `recall_guide` (or `recall guide --brief` at a
+shell) answers the same compact page directly; `recall guide` alone prints the full
+one.
+
+Only the conversation tier is searched unless `results` is set; scope defaults to the
+current repo unless `all` is set. Session ids match on any unique prefix. Terms are
+ANDed, and a long query degrades to the best partial match rather than returning
+nothing, and the answer's footer says which terms those were. Matching is
+case-insensitive and matches inside words, and a camelCase or acronym boundary ranks a
+match as a whole word rather than a lesser inside match. A term nothing carries may be
+corrected to a one-edit corpus neighbor, and a small shipped synonym table
+(`auth`/`authentication`, `db`/`database`) also searches the other spelling of some
+terms, matched only as a whole word; the footer names either substitution when it
+fires, and `exact` turns both off. Searching calls carry a default 4000-token budget
+when none is named; the footer names `--budget` when it shaped the answer.
