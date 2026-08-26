@@ -153,6 +153,9 @@ jobs:
             ${{ runner.os }}-go1.25-
       - name: output is byte-identical to the baseline
         run: |
+          # Without pipefail the `if` reads tee's status, not go test's, and
+          # this gate can never fail.
+          set -o pipefail
           if ! go test -count=1 -v ./tests/differential/ 2>&1 | tee /tmp/diff.log; then
             exit 1
           fi
