@@ -93,11 +93,6 @@ func find(args []string, out, errOut io.Writer) error {
 			limits = withoutFlag(limits, "--hits")
 		}
 		if sz.shaped {
-			// The --limit/--hits lines above are still true numbers, but
-			// --budget is why this attempt ran at all — naming --limit alone
-			// would credit a flag the caller never passed. When --limit already
-			// reports this same cut, mergeBudgetLimit folds --budget into that
-			// line instead of restating the identical fact underneath it.
 			limits = mergeBudgetLimit(limits, "sessions", len(sessions), len(s.ranked.Sessions))
 		}
 		view.Sessions = sessions
@@ -161,10 +156,8 @@ type size struct {
 	limit, hits int
 	brief       bool
 
-	// shaped is true for every attempt beyond the first — the ones that only
-	// run because the first was too big for --budget. The first attempt is
-	// what --limit/--hits/--brief asked for on their own; shaped is what makes
-	// the footer say --budget, not just those flags, is why it gave up more.
+	// shaped marks a retry attempt run only because the first was too big for
+	// --budget, so the footer can credit --budget rather than the size flags.
 	shaped bool
 }
 
@@ -207,11 +200,9 @@ func withoutFlag(limits []render.Limit, flag string) []render.Limit {
 	return out
 }
 
-// mergeBudgetLimit adds a --budget cap to limits, naming it alongside an
-// existing entry that already reports the identical fact — same quantity,
-// same shown and total — instead of restating it on a line of its own. Two
-// lines saying the same number is a defect, not two narrowings; a genuinely
-// different cut (a different shown or total) still gets its own line.
+// mergeBudgetLimit folds a --budget cap into an existing entry reporting the
+// identical shown/total rather than restating it on its own line; a
+// genuinely different cut still gets its own line.
 func mergeBudgetLimit(limits []render.Limit, what string, shown, total int) []render.Limit {
 	for i, l := range limits {
 		if l.What == what && l.Shown == shown && l.Total == total {

@@ -24,10 +24,6 @@ func callResumeErr(t *testing.T, args ...string) (stdout, stderr string, err err
 	return out.String(), errOut.String(), err
 }
 
-// TestResumeNamesClaudeResumeForAClaudeCodeSession is the reused-resolver,
-// full-wiring case: a unique prefix against the real archive comes back as
-// exactly `cd <cwd> && claude --resume <full id>`, where <cwd> is the
-// directory the fixture planted and Materialize actually built on disk.
 func TestResumeNamesClaudeResumeForAClaudeCodeSession(t *testing.T) {
 	c := harness(t)
 	t.Chdir(c.Scratch)
@@ -42,9 +38,6 @@ func TestResumeNamesClaudeResumeForAClaudeCodeSession(t *testing.T) {
 	}
 }
 
-// TestResumeFormatJSONCarriesSessionAgentCWDAndArgv is EARS: WHEN recall
-// resume runs with --format json THE SYSTEM SHALL emit the session, agent,
-// cwd and argv as one object.
 func TestResumeFormatJSONCarriesSessionAgentCWDAndArgv(t *testing.T) {
 	c := harness(t)
 	t.Chdir(c.Scratch)
@@ -69,9 +62,6 @@ func TestResumeFormatJSONCarriesSessionAgentCWDAndArgv(t *testing.T) {
 	}
 }
 
-// TestResumeNamesCodexResumeForACodexSession is EARS: WHEN the resolved
-// session came from the Codex store THE SYSTEM SHALL name the codex resume
-// command rather than the Claude Code one.
 func TestResumeNamesCodexResumeForACodexSession(t *testing.T) {
 	pinCodexSelection(t)
 	harnessAt(t)
@@ -94,10 +84,6 @@ func turn(session, uuid string, origin schema.Agent, cwd string) schema.Turn {
 	return schema.Turn{Session: session, UUID: uuid, TS: "2026-01-01T00:00:00Z", Origin: origin, CWD: cwd}
 }
 
-// TestResumeViewPicksTheFirstNonEmptyCWDInTheSession is the derivation rule:
-// a session can carry turns from directories other than where it started
-// (e.g. a cd mid-session never changes the store's own key), and the first
-// non-empty one is the one the provider keyed the session under.
 func TestResumeViewPicksTheFirstNonEmptyCWDInTheSession(t *testing.T) {
 	turns := []schema.Turn{
 		turn("s1", "u1", schema.AgentClaudeCode, ""),
@@ -113,10 +99,6 @@ func TestResumeViewPicksTheFirstNonEmptyCWDInTheSession(t *testing.T) {
 	}
 }
 
-// TestResumeViewReportsAnAmbiguousPrefixLikeShowDoes is EARS: IF the session
-// prefix matches more than one session THE SYSTEM SHALL exit 2 and list the
-// candidate ids. resolveSession is reused verbatim from cmd_show.go, so this
-// pins that resume actually reaches it rather than resolving some other way.
 func TestResumeViewReportsAnAmbiguousPrefixLikeShowDoes(t *testing.T) {
 	turns := []schema.Turn{
 		turn("aaa11111", "u1", schema.AgentClaudeCode, "/x"),
@@ -136,10 +118,8 @@ func TestResumeViewReportsAnAmbiguousPrefixLikeShowDoes(t *testing.T) {
 	}
 }
 
-// TestResumeViewRefusesAnAgentWithNoResumeCommand is EARS: an agent with no
-// entry in the table exits fperr.ArgError naming the agents that do have one.
-// AgentGemini is registered in schema but has no resumeArgv entry, which is
-// exactly the gap this guards.
+// AgentGemini is registered in schema but has no resumeArgv entry — the gap
+// this test exercises.
 func TestResumeViewRefusesAnAgentWithNoResumeCommand(t *testing.T) {
 	turns := []schema.Turn{turn("s1", "u1", schema.AgentGemini, "/x")}
 	_, err := resumeView(turns, "s1")
@@ -154,19 +134,13 @@ func TestResumeViewRefusesAnAgentWithNoResumeCommand(t *testing.T) {
 			t.Errorf("error does not name the agents that do have a resume command (%s): %v", want, err)
 		}
 	}
-	// Negative control: the list of agents that DO have a resume command must
-	// not itself grow to include the one that triggered the error.
 	if want := "recall resume supports claude-code, codex"; !strings.Contains(err.Error(), want) {
 		t.Errorf("error %q does not end in the exact supported list %q — gemini may have leaked into it", err.Error(), want)
 	}
 }
 
-// TestResumeStatesAMissingDirectoryOnStderrNotStdout is EARS: IF the
-// session's recorded working directory no longer exists THE SYSTEM SHALL
-// still emit the argv and state the missing directory as a note. The note has
-// to reach the caller somehow, and stdout is not that channel: it stays one
-// eval-safe line so `eval "$(recall resume <id>)"` never runs a second
-// command.
+// stdout stays one eval-safe line so `eval "$(recall resume <id>)"` never
+// runs a second command; the note goes to stderr instead.
 func TestResumeStatesAMissingDirectoryOnStderrNotStdout(t *testing.T) {
 	c := harness(t)
 	t.Chdir(c.Scratch)
@@ -187,11 +161,6 @@ func TestResumeStatesAMissingDirectoryOnStderrNotStdout(t *testing.T) {
 	}
 }
 
-// TestResumeStatesNoRecordedDirectoryOnStderrNotStdout is EARS: IF the
-// session recorded no working directory at all THE SYSTEM SHALL still emit
-// the argv and state that on stderr, worded differently from the
-// missing-directory case, and the stdout line carries no `cd` prefix since
-// there is nothing recorded to cd into.
 func TestResumeStatesNoRecordedDirectoryOnStderrNotStdout(t *testing.T) {
 	pinCodexSelection(t)
 	harnessAt(t)
@@ -224,9 +193,6 @@ func TestResumeStatesNoRecordedDirectoryOnStderrNotStdout(t *testing.T) {
 	}
 }
 
-// TestResumeIsSilentOnStderrWhenTheCWDExists is the negative control: a
-// session whose recorded directory is still there gets no note at all, so a
-// future change can't turn every resume into stderr chatter.
 func TestResumeIsSilentOnStderrWhenTheCWDExists(t *testing.T) {
 	c := harness(t)
 	t.Chdir(c.Scratch)
@@ -240,10 +206,8 @@ func TestResumeIsSilentOnStderrWhenTheCWDExists(t *testing.T) {
 	}
 }
 
-// TestResumeViewNotesAMissingDirectoryWithoutFailing is EARS: IF the
-// session's recorded working directory no longer exists THE SYSTEM SHALL
-// still emit the argv and state the missing directory as a note — not an
-// error, because the caller may still want to resume from elsewhere.
+// A vanished cwd is a note, not an error — the caller may still want to
+// resume from elsewhere.
 func TestResumeViewNotesAMissingDirectoryWithoutFailing(t *testing.T) {
 	gone := filepath.Join(t.TempDir(), "does-not-exist")
 	turns := []schema.Turn{turn("s1", "u1", schema.AgentClaudeCode, gone)}
@@ -268,10 +232,6 @@ func TestResumeViewNotesAMissingDirectoryWithoutFailing(t *testing.T) {
 	}
 }
 
-// TestResumeViewNotesAreDistinctBetweenMissingAndUnrecordedCWD is the
-// negative control the spec calls out by name: a directory that once existed
-// and now does not is a different case from a session that never recorded
-// one at all, and the two notes must not read the same.
 func TestResumeViewNotesAreDistinctBetweenMissingAndUnrecordedCWD(t *testing.T) {
 	existing := t.TempDir()
 	gone := filepath.Join(existing, "gone")

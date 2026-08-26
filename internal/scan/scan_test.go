@@ -218,10 +218,6 @@ func TestMatchKindDistinguishesAWordFromAnIdentifierInterior(t *testing.T) {
 	}
 }
 
-// A camel hump is a word boundary an identifier's own case carries, even
-// though fold has erased it from the buffer classify used to read alone.
-// "limiter" losing to prose because rateLimiter's second half scored as an
-// interior match was the bug this closes.
 func TestMatchKindReadsCaseTransitionsInTheOriginalText(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -233,8 +229,6 @@ func TestMatchKindReadsCaseTransitionsInTheOriginalText(t *testing.T) {
 		{"non-leading segment of a camelCase identifier", "the rateLimiter object", "limiter", schema.MatchWord},
 		{"acronym dropping to a word", "the HTTPServer boots", "server", schema.MatchWord},
 		{"letter picking up after a digit", "the http2server call", "server", schema.MatchWord},
-		// A substring wholly inside one case run touches no transition at
-		// either edge, even though the word it sits in has a hump elsewhere.
 		{"interior substring crossing no case boundary", "the download manager", "wnlo", schema.MatchInside},
 	}
 	for _, tc := range cases {

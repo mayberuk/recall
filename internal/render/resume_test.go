@@ -5,10 +5,8 @@ import (
 	"testing"
 )
 
-// TestRenderResumeEmitsExactlyOneCdAndArgvLine pins the contract two separate
-// callers (the fzf ctrl-r binding, the Raycast extension) both evaluate:
-// `cd <cwd> && <argv>`, one line, so `eval "$(recall resume <id>)"` composes
-// from a directory that is never the session's own.
+// Pins the one-line `cd <cwd> && <argv>` shape external callers (fzf,
+// Raycast) eval directly.
 func TestRenderResumeEmitsExactlyOneCdAndArgvLine(t *testing.T) {
 	got := string(RenderResume(Resume{
 		CWD:  "/home/dev/acme",
@@ -20,10 +18,6 @@ func TestRenderResumeEmitsExactlyOneCdAndArgvLine(t *testing.T) {
 	}
 }
 
-// TestRenderResumeOmitsCdWhenNoCWDWasRecorded is the negative control for the
-// case above: a session with nothing recorded must not print a `cd` to
-// nowhere, and must not print a leading space where the prefix would have
-// gone either.
 func TestRenderResumeOmitsCdWhenNoCWDWasRecorded(t *testing.T) {
 	got := string(RenderResume(Resume{Argv: []string{"codex", "resume", "c0dec001"}}))
 	want := "codex resume c0dec001\n"
@@ -32,10 +26,8 @@ func TestRenderResumeOmitsCdWhenNoCWDWasRecorded(t *testing.T) {
 	}
 }
 
-// TestRenderResumeSingleQuotesAnEmbeddedQuoteInTheCWD is the reason raw
-// interpolation is disallowed: a cwd is an arbitrary filesystem path, and one
-// carrying a single quote would otherwise close the shell string early and
-// let the rest of the path run as commands.
+// Unquoted, a single quote in cwd would close the shell string early and let
+// the rest run as commands.
 func TestRenderResumeSingleQuotesAnEmbeddedQuoteInTheCWD(t *testing.T) {
 	got := string(RenderResume(Resume{
 		CWD:  "/home/dev/o'brien",
@@ -47,10 +39,6 @@ func TestRenderResumeSingleQuotesAnEmbeddedQuoteInTheCWD(t *testing.T) {
 	}
 }
 
-// TestResumeJSONLCarriesTheSameFieldsAsJSON is the machine-format half of the
-// contract: --format jsonl must not drop a field --json carries, because a
-// caller picks the format it streams rather than the one that answers in
-// full.
 func TestResumeJSONLCarriesTheSameFieldsAsJSON(t *testing.T) {
 	r := Resume{
 		Session: "5fd86b00-0000-4000-8000-000000000000",
@@ -77,9 +65,6 @@ func TestResumeJSONLCarriesTheSameFieldsAsJSON(t *testing.T) {
 	}
 }
 
-// TestResumeJSONOmitsNotesWhenThereAreNone keeps an ordinary resume (a
-// recorded cwd that still exists) from carrying an empty notes array a
-// caller would otherwise have to check the length of for no reason.
 func TestResumeJSONOmitsNotesWhenThereAreNone(t *testing.T) {
 	b, err := JSON(Resume{Session: "s", Agent: "claude-code", CWD: "/x", Argv: []string{"claude", "--resume", "s"}})
 	if err != nil {

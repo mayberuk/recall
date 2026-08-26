@@ -6,13 +6,8 @@ import (
 	"github.com/mayberuk/recall/internal/render"
 )
 
-// DefaultBudget is the token budget an MCP searching call gets when it names
-// none. The CLI's own default is zero — refuse rather than shape, so a human
-// typing --budget always means it — but an agent that says nothing has no
-// such intent to preserve, and the alternative is the full 64 KiB refusal cap
-// (cmd/recall/flags.go's DefaultMaxBytes) landing in its context on every
-// call. 4000 tokens is roughly a quarter of that cap at the four-bytes-per-
-// token rule cmd/recall/flags.go's BytesPerToken applies.
+// DefaultBudget shapes output for an MCP call that never sets --budget,
+// so a silent agent gets a shaped answer rather than the full refusal cap.
 const DefaultBudget = 4000
 
 // Searcher answers the four searching verbs and the guide. It is an interface

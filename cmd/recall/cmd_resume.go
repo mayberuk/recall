@@ -15,13 +15,8 @@ import (
 
 // resumeArgv is the resume invocation for each agent's own CLI, keyed on the
 // store a session's turns were decoded from (schema.Turn.Origin). It lives
-// here rather than in internal/archive/provider.go: that file is the provider
+// here rather than in internal/archive/provider.go, which is the provider
 // registry, a different part's ground to edit.
-//
-// Verified against the installed CLIs: claude 2.1.246 (Claude Code) accepts a
-// session id via `-r, --resume [value]`; codex-cli 0.135.0 accepts one
-// positionally via `codex resume [SESSION_ID]`. Both match the spelling
-// below.
 var resumeArgv = map[schema.Agent][]string{
 	schema.AgentClaudeCode: {"claude", "--resume"},
 	schema.AgentCodex:      {"codex", "resume"},
@@ -69,10 +64,8 @@ func resume(args []string, out, errw io.Writer) error {
 		return err
 	}
 
-	// Notes go to stderr, not the stdout line: a caller composes stdout with
-	// `eval "$(recall resume <id>)"`, so a second stdout line is a second
-	// command eval would run. --json/--jsonl already carry Notes in the body,
-	// so this stays quiet there the same way warnIfLarge does.
+	// Stdout stays one eval-safe line; notes go to stderr instead. --json and
+	// --jsonl already carry Notes in the body.
 	if g.Format == FormatText {
 		for _, n := range view.Notes {
 			fmt.Fprintf(errw, "recall: %s\n", n)
@@ -83,8 +76,6 @@ func resume(args []string, out, errw io.Writer) error {
 	return emit(out, g, body, view)
 }
 
-// resumeView resolves a session prefix to the argv that reopens it, from that
-// session's own recorded turns.
 func resumeView(turns []schema.Turn, prefix string) (render.Resume, error) {
 	id, err := resolveSession(turns, prefix)
 	if err != nil {
@@ -113,9 +104,8 @@ func resumeView(turns []schema.Turn, prefix string) (render.Resume, error) {
 	return view, nil
 }
 
-// resumeOrigin is the agent a session's turns were decoded from, and the
-// directory it started in: the first non-empty schema.Turn.CWD in the
-// session, which is the one the provider keyed the session under.
+// resumeOrigin returns the first non-empty CWD in the session, which is the
+// one the provider keyed the session under — not necessarily the last.
 func resumeOrigin(session []schema.Turn) (schema.Agent, string) {
 	var agent schema.Agent
 	var cwd string

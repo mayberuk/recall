@@ -833,9 +833,8 @@ func TestTheAdapterPassesEveryValueAndNotJustTheFlag(t *testing.T) {
 // TestAZeroNumberIsLeftToTheVerbsOwnDefault pins the reading of an absent
 // number: a plain numeric field is omitempty, so a zero arriving there cannot
 // be told from a field the caller never set, and the verb's own default is the
-// only honest reading of it. Budget is the one exception, pinned separately by
-// TestABudgetOfZeroGetsTheMCPDefault: unlike --limit, a caller silent on it
-// does not get silence back.
+// only honest reading of it. Budget is the exception, covered separately by
+// TestABudgetOfZeroGetsTheMCPDefault.
 func TestAZeroNumberIsLeftToTheVerbsOwnDefault(t *testing.T) {
 	argv := searchArgv(mcp.SearchArgs{Query: "agvtool"})
 	if slices.Contains(argv, "--limit") {
@@ -846,13 +845,9 @@ func TestAZeroNumberIsLeftToTheVerbsOwnDefault(t *testing.T) {
 	}
 }
 
-// TestABudgetOfZeroGetsTheMCPDefault is board item 5's default-budget half.
-// An MCP caller silent on --budget still gets one passed to the verb: the
-// alternative is the full refusal cap landing in the caller's context on
-// every call it makes. An explicit --budget, including one smaller than the
-// default, is never overridden by it — the negative half of this test, since
-// a version that hardcoded the default over any positive value would still
-// pass a presence-only check.
+// An MCP caller silent on --budget still gets one — the alternative is the
+// full refusal cap landing in its context on every call. An explicit
+// --budget, however small, must never be overridden by the default.
 func TestABudgetOfZeroGetsTheMCPDefault(t *testing.T) {
 	argv := searchArgv(mcp.SearchArgs{Query: "agvtool"})
 	assertHasFlagValue(t, argv, "--budget", strconv.Itoa(mcp.DefaultBudget))
@@ -891,18 +886,12 @@ func TestAZeroACallerMeantReachesTheVerb(t *testing.T) {
 	}
 }
 
-// TestFindNamesBudgetInTheFooterOnlyWhenItActuallyShapedTheAnswer is the
-// footer half of board item 5: a budget-driven cut has to say --budget is why,
-// alongside the --limit/--hits lines that are still true numbers but no
-// longer the whole reason. A version that stamped --budget onto every call
-// with g.Budget > 0, whether or not the answer needed shaping, would still
-// pass a bare "the line showed up once" check — the second case below is what
-// catches that, since --budget 100000 never has to give anything up.
+// Guards against a version that stamps --budget onto every call whenever
+// g.Budget > 0, regardless of whether the answer needed shaping; the
+// unshaped case below is what would catch that.
 func TestFindNamesBudgetInTheFooterOnlyWhenItActuallyShapedTheAnswer(t *testing.T) {
 	harness(t)
 
-	// A budget of 1 token is a 4-byte cap: no real answer fits it, so every
-	// attempt beyond the first runs and the footer must say so.
 	shaped, _, err := callFind(t, fixtures.NeedleConversation, "--all", "--budget", "1")
 	if err != nil {
 		t.Fatalf("find: %v", err)
@@ -914,8 +903,6 @@ func TestFindNamesBudgetInTheFooterOnlyWhenItActuallyShapedTheAnswer(t *testing.
 		t.Errorf("footer does not name what the budget cap actually shaped: want a line containing %q, got:\n%s", want, shaped)
 	}
 
-	// The negative control: a --budget wide enough that the first attempt
-	// already fits gives up nothing, so the footer must name no --budget cap.
 	unshaped, _, err := callFind(t, fixtures.NeedleConversation, "--all", "--budget", "100000")
 	if err != nil {
 		t.Fatalf("find: %v", err)
@@ -924,8 +911,6 @@ func TestFindNamesBudgetInTheFooterOnlyWhenItActuallyShapedTheAnswer(t *testing.
 		t.Errorf("a --budget that needed no shaping still named a --budget cap:\n%s", unshaped)
 	}
 
-	// A second negative control: no --budget at all names no --budget cap
-	// either, which --limit's own line already covers but --budget must too.
 	noBudget, _, err := callFind(t, fixtures.NeedleConversation, "--all")
 	if err != nil {
 		t.Fatalf("find: %v", err)
@@ -935,10 +920,8 @@ func TestFindNamesBudgetInTheFooterOnlyWhenItActuallyShapedTheAnswer(t *testing.
 	}
 }
 
-// TestTurnsNamesBudgetInTheFooterOnlyWhenItActuallyShapedTheAnswer mirrors
-// TestFindNamesBudgetInTheFooterOnlyWhenItActuallyShapedTheAnswer for turns's
-// own budget retry loop, which cmd_turns.go implements separately from
-// find's fitToBudget.
+// Mirrors TestFindNamesBudgetInTheFooterOnlyWhenItActuallyShapedTheAnswer:
+// turns implements its own retry loop separately from find's fitToBudget.
 func TestTurnsNamesBudgetInTheFooterOnlyWhenItActuallyShapedTheAnswer(t *testing.T) {
 	harness(t)
 

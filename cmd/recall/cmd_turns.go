@@ -88,9 +88,8 @@ func turns(args []string, out io.Writer) error {
 		Matched: len(ranked),
 	}
 	pal := g.Palette(out)
-	// shaped is true for every retry beyond the first — the ones that only run
-	// because the first was too big for --budget. --limit still names its own
-	// cut truthfully; --budget is why a retry ran at all.
+	// shaped marks a retry run only because the first attempt was too big for
+	// --budget.
 	build := func(limit, chars int, shaped bool) ([]byte, error) {
 		var limits []render.Limit
 		shown := ranked
@@ -99,8 +98,6 @@ func turns(args []string, out io.Writer) error {
 			limits = append(limits, render.Limit{Flag: "--limit", What: "matched turns", Shown: len(shown), Total: len(ranked)})
 		}
 		if shaped {
-			// When --limit already reports this same cut, fold --budget into
-			// that line instead of restating the identical shown/total below it.
 			limits = mergeBudgetLimit(limits, "matched turns", len(shown), len(ranked))
 		}
 		view.Passages = view.Passages[:0]

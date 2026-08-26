@@ -269,10 +269,9 @@ func (m *matcher) collect(dst []span, folded, raw []byte) []span {
 	return dst
 }
 
-// rawBytes is a read-only, zero-copy view of s's bytes. classify only ever
-// reads raw, so reinterpreting the string's backing array is safe and keeps
-// the collect path — which already runs after every matched turn — free of
-// the copy a []byte(s) conversion would charge it per turn.
+// rawBytes is a read-only, zero-copy view of s's bytes. Reinterpreting the
+// string's backing array is safe only because classify never writes to raw;
+// it avoids the copy a []byte(s) conversion would charge per matched turn.
 func rawBytes(s string) []byte {
 	if len(s) == 0 {
 		return nil
@@ -284,11 +283,10 @@ func rawBytes(s string) []byte {
 // inside one. All three are returned; ranking weighs them differently, because
 // "no" matching inside "know" is a real occurrence and a poor answer.
 //
-// folded has already lost case, so it alone cannot see a camel hump: "limiter"
-// inside "rateLimiter" reads as interior even though it is the identifier's
-// second segment. raw is the same text before folding, byte-position-aligned
-// with folded (fold's guarantee), so classify checks it for the case and
-// letter/digit transitions that mark an identifier segment boundary.
+// folded has lost case, so it alone can't see a camel hump ("limiter" inside
+// "rateLimiter" reads as interior). raw, byte-aligned with folded by fold's
+// guarantee, is checked for the case and letter/digit transitions that mark
+// an identifier segment boundary instead.
 func classify(folded, raw []byte, offset, length int) schema.MatchKind {
 	lead := offset == 0 || !wordByte(folded[offset-1])
 	end := offset + length
@@ -310,10 +308,8 @@ func classify(folded, raw []byte, offset, length int) schema.MatchKind {
 }
 
 // caseBoundary reports whether raw starts a new identifier segment at i: a
-// camel hump ("Limiter" in "rateLimiter"), an acronym dropping back to a word
-// ("Server" in "HTTPServer"), or a letter/digit transition. ASCII-only: past
-// utf8.RuneSelf the byte-width guarantee fold relies on is for runes, not for
-// this multi-byte case logic, so classify's wordByte test is left to decide.
+// camel hump, an acronym dropping back to a word, or a letter/digit
+// transition. ASCII-only — past utf8.RuneSelf this is left to wordByte.
 func caseBoundary(raw []byte, i int) bool {
 	if i <= 0 || i >= len(raw) || raw[i] >= utf8.RuneSelf || raw[i-1] >= utf8.RuneSelf {
 		return false
