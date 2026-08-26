@@ -147,7 +147,7 @@ a:hover{text-decoration-color:var(--stamp)}
 .hero{padding-block:clamp(2.2rem,6vw,4.4rem) clamp(1.6rem,3vw,2.4rem)}
 h1{
   font-family:var(--display);font-weight:700;
-  font-size:clamp(3.4rem,12.4vw,8.4rem);line-height:.84;letter-spacing:-.04em;
+  font-size:clamp(2.55rem,9.3vw,6.3rem);line-height:.86;letter-spacing:-.038em;
   margin:0 0 1.3rem;max-width:15ch;text-wrap:balance;
 }
 h1 em{font-style:normal;color:var(--stamp)}

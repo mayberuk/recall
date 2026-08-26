@@ -24,10 +24,10 @@ colors:
 typography:
   display:
     fontFamily: "Big Shoulders Display, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "clamp(3.4rem, 12.4vw, 8.4rem)"
+    fontSize: "clamp(2.55rem, 9.3vw, 6.3rem)"
     fontWeight: 700
-    lineHeight: 0.84
-    letterSpacing: "-0.04em"
+    lineHeight: 0.86
+    letterSpacing: "-0.038em"
   section:
     fontFamily: "Big Shoulders Display, ui-sans-serif, system-ui, sans-serif"
     fontSize: "clamp(2.2rem, 5.6vw, 4rem)"
