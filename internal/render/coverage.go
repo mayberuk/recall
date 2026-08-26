@@ -49,9 +49,8 @@ type Expansion struct {
 	Variants []string `json:"variants"`
 	Distance int      `json:"distance,omitempty"`
 
-	// Synonym marks an expansion drawn from the shipped synonym table rather
-	// than the miss-path's edit-distance substitution; Version then names the
-	// table build a caller reading a different one can check itself against.
+	// Synonym marks a shipped-table expansion rather than edit-distance
+	// substitution; Version names the table build it came from.
 	Synonym bool `json:"synonym,omitempty"`
 	Version int  `json:"version,omitempty"`
 }

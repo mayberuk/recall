@@ -89,15 +89,8 @@ type term struct {
 // variant is one substituted needle with its own anchor, because the rarest
 // byte of a corpus word is not the rarest byte of the word it stands in for.
 type variant struct {
-	needle []byte
-	rare   int
-
-	// synonym marks a needle drawn from the shipped table (newTerm's compile-time
-	// lookup) rather than widen's miss-path substitution. The caller typed the
-	// term this needle stands in for but never typed the needle itself, so unlike
-	// a typed needle it earns a hit only where it stands as its own word — the
-	// fuzzy needle widen adds is harvested from the corpus's own vocabulary on a
-	// miss, a different and safer case this flag keeps out of the rule.
+	needle  []byte
+	rare    int
 	synonym bool
 }
 
@@ -165,9 +158,6 @@ func (m *matcher) widen(exps []Expansion) matcher {
 			}
 			alt := make([]variant, 0, len(e.Variants))
 			for _, v := range e.Variants {
-				// widen's needles come from the corpus's own vocabulary on a
-				// miss, not the synonym table, so they keep the old
-				// any-occurrence rule.
 				alt = append(alt, newVariant(v, false))
 			}
 			out.terms[i].alt = alt
@@ -186,9 +176,6 @@ func newTerm(r rawTerm, exact bool) term {
 	}
 	n := []byte(needle)
 	t := term{text: text, needle: n, rare: rarestByte(n), phrase: r.quoted}
-	// The synonym table is suppressed under the same two conditions stemming
-	// already is: --exact asked for the word as typed, and a quoted phrase is
-	// never read as anything but itself.
 	if !exact && !r.quoted {
 		if syns := synonymsFor(text); len(syns) > 0 {
 			t.alt = make([]variant, 0, len(syns))
@@ -306,15 +293,6 @@ func (m matcher) excluded(folded []byte) bool {
 	return false
 }
 
-// satisfied reports whether folded carries this term, through the needle the
-// caller typed or any needle substituted for it. This is the accounting gate —
-// mark and excluded both call it before a single span is collected — so it has
-// to agree with collect's own filter or a term could be marked carried on a
-// match collect would then discard. A typed needle counts wherever it occurs,
-// because the caller chose to type it. A synonym needle (variant.synonym) only
-// counts where wordOccurs finds it standing as its own word; a fuzzy needle
-// (widen's miss-path substitution, harvested from the corpus's own vocabulary)
-// keeps the old any-occurrence rule, because it is a different and safer case.
 func (t *term) satisfied(folded []byte) bool {
 	if indexAt(folded, t.needle, t.rare) >= 0 {
 		return true
@@ -334,13 +312,8 @@ func (t *term) satisfied(folded []byte) bool {
 	return false
 }
 
-// wordOccurs reports whether needle occurs in folded classified as a whole
-// word. It runs ahead of collect, before raw text is plumbed to this walk, so
-// it stands classify's own raw argument in for folded — that only ever makes
-// the boundary test stricter, never looser, because caseBoundary needs an
-// actual case transition to fire and folded has none left. So a needle this
-// finds standing as a whole word is one collect's raw-aware pass, run later
-// over the same text, will find no less a word than this did.
+// folded stands in for raw: this caller cannot reach the unfolded text, and a
+// folded-only verdict is a subset of the raw-aware one, so it never over-counts.
 func wordOccurs(folded, needle []byte, rare int) bool {
 	for base := 0; base+len(needle) <= len(folded); {
 		at := indexAt(folded[base:], needle, rare)
@@ -391,9 +364,9 @@ func (m *matcher) collect(dst []span, folded, raw []byte) []span {
 // appendSpans walks each needle separately: a span's length is its own
 // needle's, and two needles of one term rarely share a length.
 //
-// wordOnly holds for a synonym needle. The caller never typed it, so it counts
-// only where it stands as its own word: substituting on someone's behalf must
-// not widen their query into the insides of unrelated words.
+// wordOnly requires a synonym needle to stand as its own word. Without it, "id"
+// substituted for "identifier" matches inside "video", "provide" and
+// "consider" — a measured 351x precision regression.
 func appendSpans(dst []span, folded, raw, needle []byte, rare int, wordOnly bool) []span {
 	for base := 0; base+len(needle) <= len(folded); {
 		at := indexAt(folded[base:], needle, rare)

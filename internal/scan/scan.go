@@ -86,9 +86,8 @@ type Expansion struct {
 	Variants []string
 	Distance int
 
-	// Synonym marks an expansion drawn from the shipped synonym table rather
-	// than the miss-path's edit-distance substitution. It fires on every
-	// search, not only a miss, so Distance is meaningless here and left zero.
+	// Synonym marks an expansion from the shipped table rather than edit-distance
+	// substitution; Distance is meaningless here and left zero.
 	Synonym bool
 }
 
@@ -210,10 +209,7 @@ func Search(turns []schema.Turn, q Query) Result {
 	// into one answer.
 	found := mergeShards(scanShards(turns, q, mp, want), &res, len(m.terms))
 	settle(&res, mp, found)
-	// The synonym table is applied at compile time and fires on every search,
-	// not only a miss — unlike the substitution below, which runs only when the
-	// hit path came back short. mp.terms is never mutated after compile (widen
-	// works on a clone), so this reads exactly the table hits this query made.
+	// Table hits are read here; substitute below may still append its own.
 	res.Match.Expanded = synonymExpansions(mp, res.Match.Carried)
 
 	// A full hit returns here, keeping the hit path at its one-pass cost. A

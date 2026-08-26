@@ -81,8 +81,6 @@ func TestNewTermAddsNoAltForAWordNotInTheTable(t *testing.T) {
 	}
 }
 
-// --exact and a quoted phrase suppress the synonym table the same way they
-// already suppress stemming — matching the requirement's own wording.
 func TestNewTermSuppressesSynonymsUnderExactAndInAPhrase(t *testing.T) {
 	if got := newTerm(rawTerm{text: "database"}, true); len(got.alt) != 0 {
 		t.Errorf("database.alt under --exact = %+v, want none", got.alt)
@@ -92,9 +90,8 @@ func TestNewTermSuppressesSynonymsUnderExactAndInAPhrase(t *testing.T) {
 	}
 }
 
-// A synonym-bearing term marks the matcher as expanded at compile time, the
-// same signal widen sets on the miss path — collect needs it to sort a single
-// term's spans, which two needles can otherwise return out of offset order.
+// collect needs the expanded signal to sort one term's spans: two needles can
+// otherwise return them out of offset order.
 func TestCompileMarksTheMatcherExpandedForATableWord(t *testing.T) {
 	if m := compile(Query{Text: "database"}); !m.expanded {
 		t.Error("compiling a table word did not set matcher.expanded")
@@ -104,9 +101,6 @@ func TestCompileMarksTheMatcherExpandedForATableWord(t *testing.T) {
 	}
 }
 
-// A synonym reaches a turn the typed spelling never uses, on a plain hit —
-// not only when the search would otherwise have come back empty. This is the
-// worked example the requirement is built around.
 func TestASynonymReachesATurnTheTypedSpellingNeverUses(t *testing.T) {
 	turns := []schema.Turn{turn("s1", schema.TierConversation, "back up the db before the migration runs")}
 	res := Search(turns, Query{Text: "database"})
@@ -118,7 +112,6 @@ func TestASynonymReachesATurnTheTypedSpellingNeverUses(t *testing.T) {
 		t.Errorf("Expanded %+v, want %+v", res.Match.Expanded, want)
 	}
 
-	// The reverse direction: typing the abbreviation reaches the long form.
 	turns2 := []schema.Turn{turn("s1", schema.TierConversation, "restore the database from the nightly snapshot")}
 	res2 := Search(turns2, Query{Text: "db"})
 	if len(res2.Hits) != 1 {
@@ -130,13 +123,9 @@ func TestASynonymReachesATurnTheTypedSpellingNeverUses(t *testing.T) {
 	}
 }
 
-// The regression guard: a synonym needle sitting only inside an unrelated
-// word — "id" inside "video", the shape that inflated "identifier" from 141
-// hits to 49,524 — is not a hit. Widening a query on the caller's behalf must
-// not silently turn it into a substring search of the whole corpus; a term
-// the caller never typed earns a match only where it stands as its own word.
-// A build that dropped the word-boundary rule and went back to any-occurrence
-// matching would turn this hit count positive and fail this test.
+// "id" inside "video" is not a hit: a needle the caller never typed earns a
+// match only where it stands as its own word. Dropping that rule inflated
+// "identifier" from 141 hits to 49,524.
 func TestSynonymNeedleInsideALongerWordIsNotAHit(t *testing.T) {
 	turns := []schema.Turn{turn("s1", schema.TierConversation, "check the video for calibration before the demo")}
 	res := Search(turns, Query{Text: "identifier"})
@@ -148,11 +137,6 @@ func TestSynonymNeedleInsideALongerWordIsNotAHit(t *testing.T) {
 	}
 }
 
-// The positive control for the guard above: the same synonym needle, present
-// as a standalone word rather than inside another one, still finds the turn
-// and the footer still declares the substitution. Without this the guard
-// above could be satisfied by breaking synonym matching altogether rather
-// than by fixing the boundary rule.
 func TestSynonymNeedleAsAStandaloneWordIsAHit(t *testing.T) {
 	turns := []schema.Turn{turn("s1", schema.TierConversation, "grab the id from the response before you log it")}
 	res := Search(turns, Query{Text: "identifier"})
@@ -165,9 +149,6 @@ func TestSynonymNeedleAsAStandaloneWordIsAHit(t *testing.T) {
 	}
 }
 
-// --exact rules the substitution out the same way it does for stemming: the
-// literal word is searched and nothing else, so a corpus that only ever wrote
-// the counterpart is a genuine miss.
 func TestExactSuppressesSynonymExpansion(t *testing.T) {
 	turns := []schema.Turn{turn("s1", schema.TierConversation, "back up the db before the migration runs")}
 	res := Search(turns, Query{Text: "database", Exact: true})
@@ -179,8 +160,6 @@ func TestExactSuppressesSynonymExpansion(t *testing.T) {
 	}
 }
 
-// A quoted phrase is never read as anything but itself, matching how phrases
-// already suppress stemming.
 func TestQuotedPhraseSuppressesSynonymExpansion(t *testing.T) {
 	turns := []schema.Turn{turn("s1", schema.TierConversation, "back up the db before the migration runs")}
 	res := Search(turns, Query{Text: `"database"`})
@@ -192,8 +171,6 @@ func TestQuotedPhraseSuppressesSynonymExpansion(t *testing.T) {
 	}
 }
 
-// The negative control: a query using no table word adds no needle, so the
-// coverage line has nothing to report.
 func TestANonTableWordAddsNoExpansion(t *testing.T) {
 	turns := []schema.Turn{turn("s1", schema.TierConversation, "the wallet button")}
 	res := Search(turns, Query{Text: "wallet"})
@@ -205,9 +182,6 @@ func TestANonTableWordAddsNoExpansion(t *testing.T) {
 	}
 }
 
-// A table word that turns up nowhere at all — neither spelling — is a plain
-// miss, and the substitution has nothing to declare: "contributes to a
-// search" means the returned turns actually carry it.
 func TestASynonymThatMatchesNothingReportsNoExpansion(t *testing.T) {
 	turns := []schema.Turn{turn("s1", schema.TierConversation, "the wallet button")}
 	res := Search(turns, Query{Text: "database"})
@@ -219,9 +193,6 @@ func TestASynonymThatMatchesNothingReportsNoExpansion(t *testing.T) {
 	}
 }
 
-// A relaxed, multi-term search names only the terms the returned turns
-// actually carry: a table word absent from every returned turn is not
-// declared just because it compiled with a synonym.
 func TestASynonymTermAbsentFromTheReturnedTurnsIsNotDeclared(t *testing.T) {
 	turns := []schema.Turn{turn("s1", schema.TierConversation, "the wallet button")}
 	res := Search(turns, Query{Text: "database wallet"})
@@ -233,9 +204,8 @@ func TestASynonymTermAbsentFromTheReturnedTurnsIsNotDeclared(t *testing.T) {
 	}
 }
 
-// caseBoundary is classify's raw-side test in isolation: each of the four
-// rules in the phase's action block, plus the guards that keep it inert
-// outside ASCII and off invalid indices.
+// caseBoundary in isolation, including the guards that keep it inert outside
+// ASCII and off invalid indices.
 func TestCaseBoundary(t *testing.T) {
 	cases := []struct {
 		name string

@@ -201,7 +201,6 @@ func TestAnExpansionLineNamesEveryVariantAndPluralisesItsDistance(t *testing.T) 
 	}
 }
 
-// The version is stated so an answer taken from a different build is traceable.
 func TestASynonymExpansionNamesTheSubstitutedWordAndTheTableVersion(t *testing.T) {
 	q := Query{Expanded: []Expansion{{Term: "database", Variants: []string{"db"}, Synonym: true, Version: 1}}}
 	got := q.lines()
@@ -220,9 +219,6 @@ func TestASynonymExpansionListsEveryVariant(t *testing.T) {
 	}
 }
 
-// A synonym entry and a fuzzy-typo entry read as two different sentences, so a
-// query that both corrected a typo and reached a table word states each in
-// its own line rather than folding one format into the other.
 func TestASynonymAndAFuzzyExpansionEachPrintTheirOwnLineFormat(t *testing.T) {
 	q := Query{Expanded: []Expansion{
 		{Term: "database", Variants: []string{"db"}, Synonym: true, Version: 1},
@@ -243,9 +239,6 @@ func TestASynonymAndAFuzzyExpansionEachPrintTheirOwnLineFormat(t *testing.T) {
 	}
 }
 
-// The wire contract for the two Expansion shapes: a synonym entry carries no
-// distance, and a plain typo entry carries no synonym marker or version — a
-// consumer branching on "synonym" must not see either field leak across.
 func TestSynonymAndFuzzyExpansionsHaveDisjointJSONShapes(t *testing.T) {
 	syn, err := json.Marshal(Expansion{Term: "database", Variants: []string{"db"}, Synonym: true, Version: 1})
 	if err != nil {
@@ -264,9 +257,6 @@ func TestSynonymAndFuzzyExpansionsHaveDisjointJSONShapes(t *testing.T) {
 	}
 }
 
-// The negative control: a search that answered the words it was handed leaves
-// the footer free of any expansion line. A line printed unconditionally would
-// pass both tests above.
 func TestAQueryWithNothingSubstitutedPrintsNoExpansionLine(t *testing.T) {
 	q := Query{Terms: []string{"wallet", "balance"}, Required: 1, Total: 2, Carried: []string{"wallet", "balance"}}
 	for _, line := range q.lines() {

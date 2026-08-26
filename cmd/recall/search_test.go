@@ -442,8 +442,6 @@ func TestATypoIsCorrectedAndTheCoverageFooterSaysSo(t *testing.T) {
 	}
 }
 
-// A table hit that never reached the footer is the same silent answer-swap the
-// typo test above exists to catch, so this walks the whole chain.
 func TestASynonymIsSearchedAndTheCoverageFooterSaysSo(t *testing.T) {
 	turns := []schema.Turn{
 		{Session: "s1", UUID: "u1", Repo: "acme/mobile", Tier: schema.TierConversation,
@@ -465,8 +463,6 @@ func TestASynonymIsSearchedAndTheCoverageFooterSaysSo(t *testing.T) {
 		t.Errorf("the footer never named the substitution\n%s", strings.Join(c.coverageOf(s.scan, f, s.skipped, nil).Lines(), "\n"))
 	}
 
-	// The control: --exact asked for the word as typed, so there is nothing to
-	// find and nothing to declare.
 	exact := &corpus{turns: turns, tiers: []schema.Tier{schema.TierConversation}}
 	e := newSearchFlags()
 	e.All, e.Exact = true, true
