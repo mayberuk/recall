@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strings"
 	"unicode"
+	"unicode/utf8"
+	"unsafe"
 
 	"github.com/mayberuk/recall/internal/schema"
 )
@@ -238,7 +240,7 @@ func (m matcher) excluded(folded []byte) bool {
 // session, uuid, tier, offset, length and text, so collapsing them here would
 // undercount. Byte-identical spans, which two terms sharing a stem produce, are
 // the one case merged — they are the same match found twice.
-func (m *matcher) collect(dst []span, folded []byte) []span {
+func (m *matcher) collect(dst []span, folded, raw []byte) []span {
 	dst = dst[:0]
 	for i := range m.terms {
 		if !m.carried[i] {
@@ -251,7 +253,7 @@ func (m *matcher) collect(dst []span, folded []byte) []span {
 				break
 			}
 			off := base + at
-			dst = append(dst, span{offset: off, length: len(needle), kind: classify(folded, off, len(needle))})
+			dst = append(dst, span{offset: off, length: len(needle), kind: classify(folded, raw, off, len(needle))})
 			base = off + len(needle)
 		}
 	}
@@ -267,13 +269,36 @@ func (m *matcher) collect(dst []span, folded []byte) []span {
 	return dst
 }
 
+// rawBytes is a read-only, zero-copy view of s's bytes. classify only ever
+// reads raw, so reinterpreting the string's backing array is safe and keeps
+// the collect path — which already runs after every matched turn — free of
+// the copy a []byte(s) conversion would charge it per turn.
+func rawBytes(s string) []byte {
+	if len(s) == 0 {
+		return nil
+	}
+	return unsafe.Slice(unsafe.StringData(s), len(s))
+}
+
 // classify says whether a match stands as its own word, starts one, or sits
 // inside one. All three are returned; ranking weighs them differently, because
 // "no" matching inside "know" is a real occurrence and a poor answer.
-func classify(folded []byte, offset, length int) schema.MatchKind {
+//
+// folded has already lost case, so it alone cannot see a camel hump: "limiter"
+// inside "rateLimiter" reads as interior even though it is the identifier's
+// second segment. raw is the same text before folding, byte-position-aligned
+// with folded (fold's guarantee), so classify checks it for the case and
+// letter/digit transitions that mark an identifier segment boundary.
+func classify(folded, raw []byte, offset, length int) schema.MatchKind {
 	lead := offset == 0 || !wordByte(folded[offset-1])
 	end := offset + length
 	trail := end >= len(folded) || !wordByte(folded[end])
+	if !lead {
+		lead = caseBoundary(raw, offset)
+	}
+	if !trail {
+		trail = caseBoundary(raw, end)
+	}
 	switch {
 	case lead && trail:
 		return schema.MatchWord
@@ -283,3 +308,29 @@ func classify(folded []byte, offset, length int) schema.MatchKind {
 		return schema.MatchInside
 	}
 }
+
+// caseBoundary reports whether raw starts a new identifier segment at i: a
+// camel hump ("Limiter" in "rateLimiter"), an acronym dropping back to a word
+// ("Server" in "HTTPServer"), or a letter/digit transition. ASCII-only: past
+// utf8.RuneSelf the byte-width guarantee fold relies on is for runes, not for
+// this multi-byte case logic, so classify's wordByte test is left to decide.
+func caseBoundary(raw []byte, i int) bool {
+	if i <= 0 || i >= len(raw) || raw[i] >= utf8.RuneSelf || raw[i-1] >= utf8.RuneSelf {
+		return false
+	}
+	cur, prev := raw[i], raw[i-1]
+	switch {
+	case isUpper(cur) && (isLower(prev) || isDigit(prev)):
+		return true
+	case isUpper(cur) && isUpper(prev) && i+1 < len(raw) && raw[i+1] < utf8.RuneSelf && isLower(raw[i+1]):
+		return true
+	case isLetter(cur) && isDigit(prev), isDigit(cur) && isLetter(prev):
+		return true
+	}
+	return false
+}
+
+func isUpper(c byte) bool  { return c >= 'A' && c <= 'Z' }
+func isLower(c byte) bool  { return c >= 'a' && c <= 'z' }
+func isDigit(c byte) bool  { return c >= '0' && c <= '9' }
+func isLetter(c byte) bool { return isUpper(c) || isLower(c) }

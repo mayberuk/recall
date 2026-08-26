@@ -218,6 +218,39 @@ func TestMatchKindDistinguishesAWordFromAnIdentifierInterior(t *testing.T) {
 	}
 }
 
+// A camel hump is a word boundary an identifier's own case carries, even
+// though fold has erased it from the buffer classify used to read alone.
+// "limiter" losing to prose because rateLimiter's second half scored as an
+// interior match was the bug this closes.
+func TestMatchKindReadsCaseTransitionsInTheOriginalText(t *testing.T) {
+	cases := []struct {
+		name  string
+		text  string
+		query string
+		want  schema.MatchKind
+	}{
+		{"leading segment of a camelCase identifier", "the rateLimiter object", "rate", schema.MatchWord},
+		{"non-leading segment of a camelCase identifier", "the rateLimiter object", "limiter", schema.MatchWord},
+		{"acronym dropping to a word", "the HTTPServer boots", "server", schema.MatchWord},
+		{"letter picking up after a digit", "the http2server call", "server", schema.MatchWord},
+		// A substring wholly inside one case run touches no transition at
+		// either edge, even though the word it sits in has a hump elsewhere.
+		{"interior substring crossing no case boundary", "the download manager", "wnlo", schema.MatchInside},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res := Search([]schema.Turn{turn("s1", schema.TierConversation, tc.text)},
+				Query{Text: tc.query, Exact: true})
+			if len(res.Hits) != 1 {
+				t.Fatalf("%d hits, want 1", len(res.Hits))
+			}
+			if got := res.Hits[0].Match; got != tc.want {
+				t.Errorf("match kind %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // Ranking keys a hit on session, uuid, tier, offset, length and text, so two
 // matches at different offsets in one turn are two hits. Collapsing them here
 // would undercount a session the query is genuinely about.

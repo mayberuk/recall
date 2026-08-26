@@ -282,7 +282,7 @@ func scanRange(turns []schema.Turn, q Query, m *matcher, want map[schema.Tier]bo
 			// Once one turn has carried every term it never will be used, and
 			// holding it costs a hit per occurrence for the rest of the walk.
 			if need < len(m.terms) {
-				below = appendHits(below, turn, m, &spans, buf, found, belowCarried)
+				below = appendHits(below, turn, m, &spans, buf, rawBytes(turn.Text), found, belowCarried)
 			}
 			continue
 		case found > need:
@@ -300,7 +300,7 @@ func scanRange(turns []schema.Turn, q Query, m *matcher, want map[schema.Tier]bo
 		for j := range carried {
 			carried[j] = carried[j] || m.carried[j]
 		}
-		spans = m.collect(spans, buf)
+		spans = m.collect(spans, buf, rawBytes(turn.Text))
 		for _, s := range spans {
 			sh.hits = append(sh.hits, schema.Hit{
 				Session: turn.Session,
