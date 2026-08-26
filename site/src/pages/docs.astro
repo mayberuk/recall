@@ -33,8 +33,10 @@ const faq = [...questions.matchAll(
     text: m[2].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim(),
   },
 }));
-if (faq.length !== 8) {
-  throw new Error(`the Questions section yielded ${faq.length} entries, not 8; the FAQ markup changed shape`);
+// A floor, not an exact count: adding a question should not break the build,
+// but a parse that quietly stops matching should.
+if (faq.length < 8) {
+  throw new Error(`the Questions section yielded only ${faq.length} entries; the FAQ markup changed shape`);
 }
 
 const schema = [{

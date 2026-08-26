@@ -102,7 +102,7 @@ const agentFigures = [
 
 const privacy = [
   ['Account required', 'none'],
-  ['Bytes sent anywhere', 'none'],
+  ['Anything about your history, sent', 'none'],
   ['Telemetry, analytics, crash reports', 'none'],
   ['Background process or daemon', 'none'],
   ['Cloud index of your history', 'none'],
@@ -127,7 +127,7 @@ const schema = [
   },
 ];
 ---
-<Base title="recall, search every conversation you have had with your coding agent"
+<Base title="recall, search every Claude Code and Codex conversation on your machine"
       description="recall finds any past Claude Code or Codex conversation on your machine in about 30 milliseconds, even when you cannot remember the words you used. No index, nothing uploaded, and your agent can search it directly over MCP."
       schema={schema}>
 
@@ -257,8 +257,11 @@ run: recall find 'connection pooling' --all</pre><div class="carriage" aria-hidd
           <div><h3>Read-only, always</h3><p>Five tools. None can write, delete or alter anything.</p></div>
           <div><h3>Nothing goes anywhere</h3><p>Your machine, your files. No account, no upload.</p></div>
         </div>
-        <p class="cap agentsCap">Registers itself with · <code>recall mcp install &lt;name&gt;</code></p>
+        <p class="cap agentsCap">One click, seven clients</p>
         <Agents />
+        <p class="data agentsFoot">Cursor takes the server straight from the link. The rest install
+        with a command, so their cells put the exact one on your clipboard. Either way, recall has
+        to be installed and on your PATH first.</p>
       </div>
     </div>
   </div>
@@ -363,15 +366,9 @@ run: recall find 'connection pooling' --all</pre><div class="carriage" aria-hidd
       <div><dt>{k}</dt><dd class="none">{v}</dd></div>
     ))}</dl>
 
-    <div class="cov honest">
-      <p><b>One exception, stated rather than buried.</b> <code class="data">recall update</code>
-      asks the GitHub releases API which version is current, and only when you type it. That is a
-      request to <code class="data">api.github.com</code> carrying your IP address and nothing
-      else: no query, no session, no path. <code class="data">recall doctor</code> refreshes the
-      same answer at most once a day, and only at a terminal.
-      <code class="data">RECALL_NO_UPDATE_CHECK=1</code> stops both, and then the binary opens no
-      socket at all.</p>
-    </div>
+    <p class="data foot">recall makes one kind of network request, ever: <code>recall update</code>
+      asking GitHub which version is current, and only when you type it.
+      <a href="/docs/#staying-current">What that sends, and how to switch it off</a>.</p>
   </div>
 </section>
 </main>

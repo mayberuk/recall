@@ -89,3 +89,27 @@ const bench = {
 
 mkdirSync(join(site, 'src', 'data'), { recursive: true });
 writeFileSync(join(site, 'src', 'data', 'bench.json'), JSON.stringify(bench, null, 2) + '\n');
+
+/* ── the repository's own counters ────────────────────────────────────
+   Read once at build and baked in, never fetched from the reader's browser.
+   A page that says your data leaves: never has no business making every
+   visitor call api.github.com to render a number. It goes stale between
+   deploys, which is the honest cost of that, and the site is a printed
+   sheet with a measured date on it anyway. */
+const repo = { stars: 0, fetchedAt: '' };
+try {
+  const headers = { accept: 'application/vnd.github+json', 'user-agent': 'recall-site-build' };
+  if (process.env.GITHUB_TOKEN) headers.authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  const res = await fetch('https://api.github.com/repos/mayberuk/recall', {
+    headers, signal: AbortSignal.timeout(8000),
+  });
+  if (res.ok) {
+    const body = await res.json();
+    repo.stars = Number(body.stargazers_count) || 0;
+    repo.fetchedAt = new Date().toISOString();
+  }
+} catch {
+  // A rate limit or an offline build is not a reason to fail the build. The
+  // button renders without a count, which is what it does at zero anyway.
+}
+writeFileSync(join(site, 'src', 'data', 'repo.json'), JSON.stringify(repo, null, 2) + '\n');

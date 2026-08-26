@@ -30,6 +30,19 @@ const identity = {
   author: { '@type': 'Person', name: 'mayberuk', url: 'https://github.com/mayberuk' },
   description:
     'recall searches every past coding-agent session transcript stored on a machine, from Claude Code and Codex CLI, from any checkout of a repository, in about 30 milliseconds and with no index. It also serves the same questions to an agent over the Model Context Protocol. Every answer states what it did not search.',
+  // The words people actually type when they have this problem and do not yet
+  // know this tool exists. Every one of them is answered somewhere on the site
+  // in prose a reader can check; none of them is here alone.
+  keywords: [
+    'search Claude Code history', 'Claude Code session history', 'Claude Code transcripts',
+    'search Codex CLI sessions', 'Codex CLI history', 'coding agent conversation search',
+    'AI chat history search CLI', 'grep Claude Code logs', 'find past AI coding conversation',
+    'recover deleted Claude Code session', 'where does Claude Code store sessions',
+    'MCP server for session history', 'Model Context Protocol memory server',
+    'agent memory search tool', 'local first developer search', 'no index full text search Go',
+    'Cursor MCP server', 'Windsurf MCP server', 'Gemini CLI MCP server',
+  ],
+  alternateName: ['recall CLI', 'recall MCP server', 'mayberuk/recall'],
   featureList: [
     'Fuzzy prefix search across every past coding-agent conversation',
     'Resolves a repository by its git remote, so every clone and worktree is one history',
@@ -40,6 +53,7 @@ const identity = {
   ],
 };
 const graph = [identity, ...(schema || [])];
+const schemaKeywords = identity.keywords;
 ---
 <html lang="en">
 <head>
@@ -47,6 +61,7 @@ const graph = [identity, ...(schema || [])];
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>{title}</title>
 <meta name="description" content={description} />
+<meta name="keywords" content={(schemaKeywords || []).join(', ')} />
 <meta name="color-scheme" content="light dark" />
 <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
 <meta name="author" content="mayberuk" />
@@ -95,13 +110,17 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
      text copied is the source the block was built from, not the rendered
      spans, because what lands on a clipboard has to be what a shell accepts. */
   document.addEventListener('click', function (e) {
-    var b = e.target.closest && e.target.closest('.cbCopy');
+    var b = e.target.closest && e.target.closest('[data-code]');
     if (!b) return;
+    // A button that is only a label swaps its own text; one that is a whole
+    // tile swaps the child it marked, so the rest of the tile survives.
+    var slot = b.querySelector('[data-label]') || b;
+    var was = slot.textContent;
     navigator.clipboard.writeText(b.getAttribute('data-code')).then(function () {
       b.classList.add('ok');
-      b.textContent = 'Copied';
+      slot.textContent = 'copied to your clipboard';
       clearTimeout(b._t);
-      b._t = setTimeout(function () { b.classList.remove('ok'); b.textContent = 'Copy'; }, 1800);
+      b._t = setTimeout(function () { b.classList.remove('ok'); slot.textContent = was; }, 2200);
     });
   });
 </script>

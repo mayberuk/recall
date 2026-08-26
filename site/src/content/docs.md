@@ -377,6 +377,46 @@ repository sprawls across clones and worktrees and a path-scoped search silently
 resolves a repository by its git remote instead, so every checkout of it is one history, including
 branches you have since deleted.
 
+### Where does Claude Code store its session history?
+
+In `~/.claude/projects`, as one JSONL file per session, in a directory named after the checkout the
+session ran in. That last part is the problem recall exists to solve: the same repository cloned to
+two paths produces two directories, and anything that searches by path sees only one of them.
+
+### Where does Codex CLI store its sessions?
+
+In `~/.codex/sessions`, or under `$CODEX_HOME` if you have set it. recall reads both stores and
+`--provider` picks which, so one query can cover whichever agent you were using at the time.
+
+### How do I search my Claude Code chat history?
+
+`recall find <words>` from anywhere inside the repository. There is nothing to set up per project
+and no index to build first, and the words do not have to be the ones you used: `build` finds
+`iosBuild`, and a query that matches nothing comes back with the closest words that are in your
+history.
+
+### Can I get back a conversation Claude Code has deleted?
+
+If recall saw it, yes. Claude Code removes transcripts after 90 days. recall's archive is a data
+directory rather than a cache, so it keeps what it has already read after the raw file is gone.
+`recall doctor` prints both boundaries: `live` is how far back the raw transcripts still reach,
+`content` is how far back the archive does.
+
+### Why can't I find a conversation I know I had?
+
+Almost always because it happened in a different checkout, or a different repository. recall keys a
+repository on its git remote, so every clone and worktree of the one you are standing in is already
+covered; `--all` widens it to every repository on the machine. If a term is genuinely absent the
+footer says so, and the miss path names the nearest words that are present.
+
+### Is this just grep for my AI coding sessions?
+
+Grep is where most people start, and it falls down on three things: the transcripts are JSONL with
+tool output stored twice, so a raw match is mostly noise; they are scattered across a directory per
+checkout, so one repository is many places; and grep cannot rank, so a session that was about your
+topic does not come out above one that mentioned it once. recall strips, scopes and ranks, then
+tells you what it left out.
+
 ### What does recall cost?
 
 Nothing. It is free and open source under the MIT licence, with no paid tier and nothing to sign
