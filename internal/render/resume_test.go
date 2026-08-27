@@ -39,6 +39,38 @@ func TestRenderResumeSingleQuotesAnEmbeddedQuoteInTheCWD(t *testing.T) {
 	}
 }
 
+// A session id is whatever a store file's sessionId field says, and this line
+// is documented to be eval'd, so a metacharacter in one must not reach the
+// shell as syntax.
+func TestRenderResumeQuotesAnArgumentCarryingShellSyntax(t *testing.T) {
+	for _, tt := range []struct {
+		name, id, want string
+	}{
+		{"command substitution", "$(touch pwned)", `claude --resume '$(touch pwned)'`},
+		{"statement separator", "abc; touch pwned", `claude --resume 'abc; touch pwned'`},
+		{"closing quote", "a'; touch pwned; '", `claude --resume 'a'\''; touch pwned; '\'''`},
+		{"backtick", "`touch pwned`", "claude --resume '`touch pwned`'"},
+		{"empty", "", `claude --resume ''`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got := string(RenderResume(Resume{Argv: []string{"claude", "--resume", tt.id}}))
+			if got != tt.want+"\n" {
+				t.Errorf("RenderResume() = %q, want %q", got, tt.want+"\n")
+			}
+		})
+	}
+}
+
+// The quoting above must not reach an ordinary id, or every shipped example
+// and every caller parsing this line would have to change.
+func TestRenderResumeLeavesAnOrdinaryArgumentBare(t *testing.T) {
+	got := string(RenderResume(Resume{Argv: []string{"claude", "--resume", "5fd86b00-0000-4000-8000-000000000000"}}))
+	want := "claude --resume 5fd86b00-0000-4000-8000-000000000000\n"
+	if got != want {
+		t.Errorf("RenderResume() = %q, want %q", got, want)
+	}
+}
+
 func TestResumeJSONLCarriesTheSameFieldsAsJSON(t *testing.T) {
 	r := Resume{
 		Session: "5fd86b00-0000-4000-8000-000000000000",
