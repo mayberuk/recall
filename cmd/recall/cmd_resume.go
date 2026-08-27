@@ -67,6 +67,9 @@ func resume(args []string, out, errw io.Writer) error {
 	// Stdout stays one eval-safe line; notes go to stderr instead. --json and
 	// --jsonl already carry Notes in the body.
 	if g.Format == FormatText {
+		if err := oneLineSafe(view); err != nil {
+			return err
+		}
 		for _, n := range view.Notes {
 			fmt.Fprintf(errw, "recall: %s\n", n)
 		}
@@ -74,6 +77,20 @@ func resume(args []string, out, errw io.Writer) error {
 
 	body := render.RenderResume(view)
 	return emit(out, g, body, view)
+}
+
+// oneLineSafe refuses a line break, which survives single-quoting intact and
+// would split the one line resume prints, handing a line-oriented caller half
+// a command. Every other control byte quotes safely and is left alone.
+func oneLineSafe(r render.Resume) error {
+	for _, s := range append([]string{r.CWD}, r.Argv...) {
+		if strings.ContainsAny(s, "\r\n") {
+			return fperr.New(fperr.BadArchive,
+				"this session records a line break in its id or its directory, "+
+					"which would split the single line resume prints — --json escapes it")
+		}
+	}
+	return nil
 }
 
 func resumeView(turns []schema.Turn, prefix string) (render.Resume, error) {

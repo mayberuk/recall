@@ -24,6 +24,41 @@ func callResumeErr(t *testing.T, args ...string) (stdout, stderr string, err err
 	return out.String(), errOut.String(), err
 }
 
+func TestResumeRefusesALineBreakThatWouldSplitTheLineItPrints(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		r    render.Resume
+	}{
+		{"newline in the id", render.Resume{Argv: []string{"claude", "--resume", "a\nb"}}},
+		{"carriage return in the id", render.Resume{Argv: []string{"claude", "--resume", "a\rb"}}},
+		{"newline in the directory", render.Resume{CWD: "/tmp/a\nb", Argv: []string{"claude", "--resume", "ab"}}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			err := oneLineSafe(tt.r)
+			if err == nil {
+				t.Fatalf("accepted a value that renders as %q", render.RenderResume(tt.r))
+			}
+			if got := codeOf(t, err); got != fperr.BadArchive {
+				t.Errorf("code = %s, want %s", got, fperr.BadArchive)
+			}
+		})
+	}
+}
+
+// The refusal above is scoped to what actually splits a line: a tab is quoted
+// like any other byte, and rejecting it would refuse a legal directory.
+func TestResumeAcceptsWhatQuotingAlreadyHandles(t *testing.T) {
+	for _, r := range []render.Resume{
+		{CWD: "/home/dev/acme", Argv: []string{"claude", "--resume", "5fd86b00"}},
+		{CWD: "/home/dev/a\tb", Argv: []string{"claude", "--resume", "5fd86b00"}},
+		{CWD: "/home/dev/o'brien", Argv: []string{"claude", "--resume", "$(touch pwned)"}},
+	} {
+		if err := oneLineSafe(r); err != nil {
+			t.Errorf("oneLineSafe(%+v) = %v, want nil", r, err)
+		}
+	}
+}
+
 func TestResumeNamesClaudeResumeForAClaudeCodeSession(t *testing.T) {
 	c := harness(t)
 	t.Chdir(c.Scratch)
