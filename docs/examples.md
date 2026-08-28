@@ -33,10 +33,16 @@ HOW A QUERY IS READ
   "quoted words"    one phrase, matched together
   --all-terms       require every term; return nothing rather than a partial match
   --not <term>      skip turns carrying it; repeatable
-  --exact           no stem expansion
+  --exact           no stem expansion, no near-neighbor correction, no synonyms
   Common words are dropped from queries longer than two terms, and it says so.
-  Matching is case-insensitive and matches inside words: "build" finds "iosBuild",
-  ranked below a whole-word match.
+  Matching is case-insensitive and matches inside words: "build" finds "iosBuild"
+  and ranks it as a whole word, because a camelCase or acronym boundary counts
+  as a word edge; a plain substring inside one segment still ranks lower.
+  A term nothing carries may be corrected to a one-edit neighbor the corpus
+  has; two edits away is only suggested, never substituted. A small shipped
+  synonym table also searches the other spelling of some terms (auth,
+  authentication; db, database), matched only as a whole word. The footer
+  names either one when it fires.
 
 WHAT IS SEARCHED, AND WHAT IS NOT
   Conversation only, by default. Tool output is 58% of the store and is only
@@ -127,11 +133,11 @@ found elsewhere: 5 hits in 1 other repo
 run: recall find 'connection pool' --all
 ── 3 sessions · 3 searched · conversation only — tool output NOT searched (--results)
 ── live to 2026-05-12 · archived before that · refreshed just now
-── scanned 7.5 KB · 36 turns · 2 passes · 0.6 ms
-── 455 B · ~114 tokens
+── scanned 13.5 KB · 36 turns · 3 passes · 0.6 ms
+── 456 B · ~114 tokens
 ```
 
-A search that finds nothing is still an answer with coverage attached. `2 passes` in the footer
+A search that finds nothing is still an answer with coverage attached. `3 passes` in the footer
 is the miss path going back over the corpus to explain itself.
 
 ## `recall when`: place a topic in time

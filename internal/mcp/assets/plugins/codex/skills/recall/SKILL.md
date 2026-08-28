@@ -10,12 +10,16 @@ query reaches every checkout of a repo, not just the one the caller is standing 
 Reach for it before re-deriving something a past session already settled, rather than
 guessing at an answer this machine has already produced once.
 
-## Call recall_guide first
+## The first answer teaches
 
-recall_guide returns the same page `recall guide` prints at the shell: how a query is
-read, what is searched by default, and what every narrowing argument does. Call it once
-before the first search call, because its answer is worth keeping in context for the rest of
-the session, so it never needs a second call.
+The first recall_find, recall_turns, recall_show or recall_when call of a session
+already carries a compact guide ahead of its own answer: how a query is read, what is
+searched by default, and the footer contract. That happens once per server process, not
+once per call, so there is no round trip to make before a first search.
+
+recall_guide returns the same material at full length (every command, every argument,
+the recipes) and stays there to call directly when the compact page already in context
+is not enough.
 
 ## Which tool answers which question
 
@@ -49,8 +53,24 @@ before deciding a search came back empty rather than merely scoped.
 Terms are ANDed. A query that no turn carries in full does not come back empty; it
 degrades to the turns carrying the most of it, and the footer names which terms those
 were. `all_terms: true` requires every term and returns nothing rather than a partial
-match. `exact: true` turns off stem expansion. `not` skips turns carrying a given term
-and is repeatable.
+match. `not` skips turns carrying a given term and is repeatable.
+
+Matching is case-insensitive and matches inside words: `build` finds `iosBuild`, and a
+camelCase or acronym boundary ranks that match as a whole word, not a lesser inside
+match. A term no turn carries may be corrected to a one-edit neighbor the corpus
+actually has, and the footer names the substitution; a neighbor two edits away is only
+ever suggested, never substituted. A small shipped synonym table also searches the
+other spelling of some terms (`auth`/`authentication`, `db`/`database`, and a few dozen
+more), matched only as a whole word, and the footer names the table and its version
+when it fires. The table is curated and shipped, never learned from a corpus, so the
+same query answers the same way on any machine. `exact: true` turns off stem expansion,
+near-neighbor correction and the synonym table alike.
+
+## Answer size
+
+A searching tool call that names no `budget` gets one anyway: 4000 tokens by default, so
+an answer never lands unshaped in a session's context. An explicit `budget` always wins,
+and the footer names `--budget` when it shaped the answer.
 
 ## Session ids
 
