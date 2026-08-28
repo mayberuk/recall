@@ -20,13 +20,16 @@ import (
 
 // instructions is what a client shows the model before its first call. It
 // points at the guide rather than restating it, because the guide is a page
-// and this is a paragraph, and because a caller that reads the guide once has
-// it for the rest of the session.
+// and this is a paragraph. It stays despite preamble.go's first-call
+// duplicate: client uptake of instructions is inconsistent — Claude Desktop
+// stores it but never shows the model.
 const instructions = "recall searches the transcripts of past coding-agent sessions on this machine. " +
-	"Call recall_guide once before the first query: it states how a query is read and what a search " +
-	"leaves out by default, which is the difference between a useful answer and a confident wrong one. " +
-	"Every answer carries a coverage block naming what was not searched and what was capped — read it, " +
-	"because finding nothing within that scope is not the same as there being nothing."
+	"The first search call already returns a compact guide alongside its answer, once per session: how " +
+	"a query is read, what is searched by default, and what the coverage footer names when it corrects " +
+	"or narrows a query. Call recall_guide directly for that same page before a first search, or to " +
+	"read it again later. Every answer carries a coverage block naming what was not searched and what " +
+	"was capped — read it, because finding nothing within that scope is not the same as there being " +
+	"nothing."
 
 // toolListTTL is how long a client may serve a cached tools/list, in
 // milliseconds. The list is compiled into the binary and cannot vary per
@@ -82,7 +85,7 @@ func NewServer(opt Options) (*mcpsdk.Server, error) {
 		})
 
 	registerTools(s, &calls{searcher: opt.Searcher})
-	s.AddReceivingMiddleware(cacheToolList)
+	s.AddReceivingMiddleware(cacheToolList, newPreambleOnce(opt.Searcher).middleware)
 	return s, nil
 }
 

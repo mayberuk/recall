@@ -21,12 +21,13 @@ import (
 // re-entered — the one-query-at-a-time invariant is invisible from outside
 // otherwise.
 type fakeSearcher struct {
-	find  render.Find
-	turns render.Turns
-	show  render.Show
-	when  render.When
-	guide string
-	err   error
+	find     render.Find
+	turns    render.Turns
+	show     render.Show
+	when     render.When
+	guide    string
+	preamble string
+	err      error
 
 	// dwell is how long each answer takes. A call that returns instantly
 	// cannot demonstrate the absence of overlap.
@@ -100,6 +101,13 @@ func (f *fakeSearcher) Guide(context.Context) (string, error) {
 		return "", err
 	}
 	return f.guide, nil
+}
+
+// Preamble does not go through enter: it is answered by the middleware, not
+// by a serialized tool call, and counting it there would misreport the
+// one-query-at-a-time invariant enter exists to check.
+func (f *fakeSearcher) Preamble(context.Context) (string, error) {
+	return f.preamble, nil
 }
 
 // serve builds a server around fake and drives it through a real in-process

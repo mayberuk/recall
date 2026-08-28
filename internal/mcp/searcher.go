@@ -21,6 +21,10 @@ type Searcher interface {
 	Show(ctx context.Context, args ShowArgs) (render.Show, error)
 	When(ctx context.Context, args WhenArgs) (render.When, error)
 	Guide(ctx context.Context) (string, error)
+
+	// Preamble is the compact guide prepended to the first searching tool
+	// result of a server process (see preamble.go).
+	Preamble(ctx context.Context) (string, error)
 }
 
 // SearchArgs are the arguments every searching tool accepts, embedded rather

@@ -82,7 +82,7 @@ const sizePlaceholder = "«SIZE»"
 // exact baseline text named below, never a pattern.
 var expectedDeltas = []struct {
 	name     string // the case this delta applies to, matched against battery.name
-	from, to string // the exact baseline line, and the exact line replacing it in this tree
+	from, to string // the exact baseline text, and the exact text replacing it in this tree
 	reason   string
 }{
 	{
@@ -107,6 +107,31 @@ var expectedDeltas = []struct {
 		reason: "render.WithSize measures the body it is appended to, and the merged truncation " +
 			"line above is 10 bytes longer than the one it replaced, which is 2 more tokens at " +
 			"4 bytes each. Same edit as the delta above, counted.",
+	},
+	{
+		name: "guide",
+		from: "  --exact           no stem expansion",
+		to:   "  --exact           no stem expansion, no near-neighbor correction, no synonyms",
+		reason: "--exact now switches off two more expansions than it did, and the flag line is " +
+			"where a reader looks to find out what it turns off.",
+	},
+	{
+		name: "guide",
+		from: "  Matching is case-insensitive and matches inside words: \"build\" finds \"iosBuild\",\n" +
+			"  ranked below a whole-word match.",
+		to: "  Matching is case-insensitive and matches inside words: \"build\" finds \"iosBuild\"\n" +
+			"  and ranks it as a whole word, because a camelCase or acronym boundary counts\n" +
+			"  as a word edge; a plain substring inside one segment still ranks lower.\n" +
+			"  A term nothing carries may be corrected to a one-edit neighbor the corpus\n" +
+			"  has; two edits away is only suggested, never substituted. A small shipped\n" +
+			"  synonym table also searches the other spelling of some terms (auth,\n" +
+			"  authentication; db, database), matched only as a whole word. The footer\n" +
+			"  names either one when it fires.",
+		reason: "the baseline's claim that a substring match ranks below a whole-word one became " +
+			"false when a camelCase boundary started counting as a word edge, so the paragraph " +
+			"had to be corrected rather than extended, and near-neighbor correction and the " +
+			"synonym table are described in the same breath because they answer the same " +
+			"question about what a query reaches.",
 	},
 }
 

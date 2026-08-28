@@ -134,6 +134,17 @@ func TestDiscoverAdvertises20260728AndNotTheLoggingCapability(t *testing.T) {
 	}
 }
 
+func TestInitializeInstructionsNameTheFirstCallMechanism(t *testing.T) {
+	s, err := NewServer(Options{Version: "0.0.0-test", Searcher: &fakeSearcher{}})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	cs := connect(t, s)
+	if got := cs.InitializeResult().Instructions; !strings.Contains(got, "first search") {
+		t.Errorf("instructions do not mention the first-call preamble mechanism: %q", got)
+	}
+}
+
 // Under stdio, stdout is the protocol stream. One stray write from this
 // package corrupts it for the rest of the session, so exercise every path a
 // client can reach and assert stdout stayed empty.
