@@ -6,8 +6,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-27
+
 ### Added
 
+- **`recall resume`.** Maps a session to the argv that reopens it, in its own agent and in the
+  directory it ran in, as one shell-ready line — `eval "$(recall resume <id>)"` composes from
+  anywhere. It prints the line and never executes it. stdout is exactly one line, because a caller
+  evals it and a second line there is a second command, so the two things worth saying (a recorded
+  directory that has since gone; a session that recorded none) go to stderr, where the tool already
+  puts that kind of remark.
+- **A typo finds what you meant.** A term nothing in the corpus carries is corrected to a
+  one-edit neighbour the corpus does carry, and the footer says what was typed, what was searched
+  instead, how far apart they are, and the flag that turns it off. Two edits away is only
+  *suggested*, never substituted — at that distance a neighbour is usually a different word, and
+  silently answering a different question is the failure this tool exists to invert. The expansion
+  fires **only on a miss**, so a search that finds what it was asked for reads the corpus once and
+  allocates exactly what it did before.
+- **A shipped synonym table, 27 pairs, matched only as a whole word.** Typing `config` already
+  finds `configuration`, so that direction needs no table; typing `database` and reaching turns
+  that only ever said `db` does. The table is curated and versioned (`SynonymsVersion = 1`), never
+  learned — a table derived from one machine's corpus would give that machine an answer no other
+  machine could reproduce, and deriving it needs a counting pass over the corpus, which is an index
+  by another name. A term **you** typed still matches anywhere, because you typed it; a spelling
+  recall substitutes on your behalf must stand as its own word or be discarded, so expanding
+  `identifier` to `id` cannot drag in `video`, `provide` and `consider`.
+- **`recall guide --brief`**, and the same page inline on an agent's first search. Every session was
+  paying a `recall_guide` round trip before its first query. The first searching tool call of an
+  MCP server process now carries a 1,521-byte page stating what a caller cannot guess — how a query
+  is read, what is not searched, that the footer names every narrowing, and the exit codes — and no
+  later call in that process repeats it. `recall guide` still prints the full page on demand.
+- **`ctrl-r` in the fzf finder reopens a session** in the directory it ran in. `enter` still prints
+  the bare session id, because the finder's own header documents `recall show "$(recall-fzf …)"` and
+  rebinding `enter` would break that composition for anyone relying on it; `--resume` flips `enter`
+  for callers who prefer it.
+- **A default budget on MCP tool calls.** An agent rarely passes `--budget`, so one tool call could
+  spend an unbounded amount of a session's context. Calls now carry a default of 4,000 bytes; an
+  explicit caller value still wins, and a budget that shaped an answer says so in the footer.
 - **`recall update`.** Replaces the running binary with the latest published release, verifying its
   sha256 against the release's own `checksums.txt` first and refusing on a mismatch, exactly as
   `install.sh` has always done. `--check` reports what is available and installs nothing. A binary
@@ -21,12 +56,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **An identifier ranks like a word.** `classify` decided word/prefix/inside from the folded
+  buffer, where case has already been destroyed, so the second half of `rateLimiter` counted as an
+  interior match and was discounted in ranking. Searching `rate limiter` already *found*
+  `rateLimiter` — it just lost to weaker prose. A camelCase or acronym boundary now counts as a
+  word edge; a plain substring inside one segment still ranks lower. Since `fold` preserves byte
+  positions, the same offsets index the original text, so this costs no extra pass over the corpus
+  and no extra allocation.
+- **One truncation footer names every cause.** A run cut by both `--limit` and `--budget` used to
+  emit one line per flag, so a reader raising only the flag named first would not get more results.
+  Both causes now share one line.
 - **recall can now make a network request, from two verbs and no others.** `recall update` and
   `recall doctor` reach `api.github.com`; `doctor` does so silently, at most once a day, and only
   when its stderr is a terminal. Every other verb reads the cached answer from a file beside the
   archive and never opens a socket. There is still no daemon and no background process, and a
   search still costs what the benchmarks say it costs. `RECALL_NO_UPDATE_CHECK`, set to any
   non-empty value, disables the check and the notice together.
+- **Every shipped text describes this build.** The guide had promised that `"build"` finds
+  `"iosBuild"` *ranked below* a whole-word match, which the ranking change above made false; it
+  described neither the near-neighbour correction nor the synonym table. The bundled skill still
+  told agents to call `recall_guide` first, which is exactly the round trip that is now gone. Two
+  quoted blocks in the README and `docs/` had drifted from what the binary prints. Each claim was
+  re-checked against the code that implements it, and every quoted block re-run through
+  `scripts/demo.sh` rather than read.
+
+### Fixed
+
+- **`recall resume` interpolated a session id into a shell line without quoting it.** The line it
+  prints is documented to be run through `eval`, and a session id is whatever a store file's
+  `sessionId` field says — nothing validates it — so a metacharacter in one reached the shell as
+  syntax. The working directory beside it was already quoted; the argv was not. Quoting is
+  conditional, so an ordinary id still renders bare and every shipped example and caller parsing
+  that line is unchanged. A line break is refused outright rather than quoted: single-quoting keeps
+  a newline a newline, which would split the single line the command promises and hand a
+  line-oriented caller half a command. `--json` escapes control bytes natively and is unaffected.
+- **The byte-identical differential gate could never fail in CI.** `tests/differential` pins output
+  against the `perf-baseline` tag and is the safety net for optimizations, where any moved byte
+  means something broke silently. Its CI step ran `if ! go test … | tee …`, and without
+  `set -o pipefail` the `if` reads **tee's** exit status, which is always 0 — so the job printed
+  `--- FAIL` and reported success. It reports honestly now, and the deliberate output changes above
+  are declared in the harness's `expectedDeltas` register as literal before-and-after text, which
+  leaves each line still failing on any *other* change to it.
 
 ## [1.1.0] - 2026-08-23
 
