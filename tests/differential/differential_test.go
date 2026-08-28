@@ -92,6 +92,22 @@ var expectedDeltas = []struct {
 		reason: "recall now reads whichever agent's sessions RECALL_AGENT selects, not only Claude " +
 			"Code's, so the banner's claim about which agent it reads had to change to match.",
 	},
+	{
+		name: "common term, budget",
+		from: "── showing 10 of 15 sessions (--limit)",
+		to:   "── showing 10 of 15 sessions (--limit, --budget)",
+		reason: "the baseline emitted one footer line per flag that truncated the run, so a run cut " +
+			"by both named only --limit on the line the reader saw first. Both causes now share " +
+			"one line, because a reader raising only the flag it named would not get more results.",
+	},
+	{
+		name: "common term, budget",
+		from: "── 3.0 KB · ~765 tokens",
+		to:   "── 3.0 KB · ~767 tokens",
+		reason: "render.WithSize measures the body it is appended to, and the merged truncation " +
+			"line above is 10 bytes longer than the one it replaced, which is 2 more tokens at " +
+			"4 bytes each. Same edit as the delta above, counted.",
+	},
 }
 
 // applyExpectedDeltas rewrites the deltas registered for name from base's

@@ -218,6 +218,33 @@ func TestMatchKindDistinguishesAWordFromAnIdentifierInterior(t *testing.T) {
 	}
 }
 
+func TestMatchKindReadsCaseTransitionsInTheOriginalText(t *testing.T) {
+	cases := []struct {
+		name  string
+		text  string
+		query string
+		want  schema.MatchKind
+	}{
+		{"leading segment of a camelCase identifier", "the rateLimiter object", "rate", schema.MatchWord},
+		{"non-leading segment of a camelCase identifier", "the rateLimiter object", "limiter", schema.MatchWord},
+		{"acronym dropping to a word", "the HTTPServer boots", "server", schema.MatchWord},
+		{"letter picking up after a digit", "the http2server call", "server", schema.MatchWord},
+		{"interior substring crossing no case boundary", "the download manager", "wnlo", schema.MatchInside},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res := Search([]schema.Turn{turn("s1", schema.TierConversation, tc.text)},
+				Query{Text: tc.query, Exact: true})
+			if len(res.Hits) != 1 {
+				t.Fatalf("%d hits, want 1", len(res.Hits))
+			}
+			if got := res.Hits[0].Match; got != tc.want {
+				t.Errorf("match kind %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // Ranking keys a hit on session, uuid, tier, offset, length and text, so two
 // matches at different offsets in one turn are two hits. Collapsing them here
 // would undercount a session the query is genuinely about.

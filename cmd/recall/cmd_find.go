@@ -92,6 +92,9 @@ func find(args []string, out, errOut io.Writer) error {
 			// saying so is the silent narrowing the footer exists to prevent.
 			limits = withoutFlag(limits, "--hits")
 		}
+		if sz.shaped {
+			limits = mergeBudgetLimit(limits, "sessions", len(sessions), len(s.ranked.Sessions))
+		}
 		view.Sessions = sessions
 		if len(sessions) == 0 {
 			view.Elsewhere, view.Terms = corp.elsewhere(q, f, s.scope)
@@ -152,6 +155,10 @@ func foundSomething(sessions []render.Session) error {
 type size struct {
 	limit, hits int
 	brief       bool
+
+	// shaped marks a retry attempt run only because the first was too big for
+	// --budget, so the footer can credit --budget rather than the size flags.
+	shaped bool
 }
 
 // fitToBudget renders the largest answer that fits the caller's token budget,
@@ -159,13 +166,13 @@ type size struct {
 // session, then no snippets, then fewer sessions. Without --budget nothing is
 // given up and an oversized answer is refused, which is the existing contract.
 func fitToBudget(g *Globals, f *searchFlags, build func(size) ([]byte, error)) ([]byte, error) {
-	attempts := []size{{f.Limit, f.Hits, f.Brief}}
+	attempts := []size{{limit: f.Limit, hits: f.Hits, brief: f.Brief}}
 	if g.Budget > 0 && !f.IDs {
 		attempts = append(attempts,
-			size{f.Limit, 1, f.Brief},
-			size{f.Limit, 0, true},
-			size{max(f.Limit/2, 1), 0, true},
-			size{1, 0, true})
+			size{limit: f.Limit, hits: 1, brief: f.Brief, shaped: true},
+			size{limit: f.Limit, hits: 0, brief: true, shaped: true},
+			size{limit: max(f.Limit/2, 1), hits: 0, brief: true, shaped: true},
+			size{limit: 1, hits: 0, brief: true, shaped: true})
 	}
 
 	ceiling := g.Cap()
@@ -191,4 +198,17 @@ func withoutFlag(limits []render.Limit, flag string) []render.Limit {
 		}
 	}
 	return out
+}
+
+// mergeBudgetLimit folds a --budget cap into an existing entry reporting the
+// identical shown/total rather than restating it on its own line; a
+// genuinely different cut still gets its own line.
+func mergeBudgetLimit(limits []render.Limit, what string, shown, total int) []render.Limit {
+	for i, l := range limits {
+		if l.What == what && l.Shown == shown && l.Total == total {
+			limits[i].Flag = l.Flag + ", --budget"
+			return limits
+		}
+	}
+	return append(limits, render.Limit{Flag: "--budget", What: what, Shown: shown, Total: total})
 }

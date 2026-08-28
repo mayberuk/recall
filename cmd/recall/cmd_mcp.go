@@ -426,7 +426,12 @@ func searchArgv(a mcp.SearchArgs) []string {
 
 	argv = boolArg(argv, a.Brief, "--brief")
 	argv = boolArg(argv, a.NoUpdate, "--no-update")
-	return intArg(argv, a.Budget, "--budget")
+
+	budget := a.Budget
+	if budget == 0 {
+		budget = mcp.DefaultBudget
+	}
+	return intArg(argv, budget, "--budget")
 }
 
 // showArgv is show's own field list. Its two positional arguments are the

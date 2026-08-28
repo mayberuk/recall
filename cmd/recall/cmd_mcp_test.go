@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -832,16 +833,29 @@ func TestTheAdapterPassesEveryValueAndNotJustTheFlag(t *testing.T) {
 // TestAZeroNumberIsLeftToTheVerbsOwnDefault pins the reading of an absent
 // number: a plain numeric field is omitempty, so a zero arriving there cannot
 // be told from a field the caller never set, and the verb's own default is the
-// only honest reading of it.
+// only honest reading of it. Budget is the exception, covered separately by
+// TestABudgetOfZeroGetsTheMCPDefault.
 func TestAZeroNumberIsLeftToTheVerbsOwnDefault(t *testing.T) {
 	argv := searchArgv(mcp.SearchArgs{Query: "agvtool"})
-	for _, flag := range []string{"--limit", "--budget"} {
-		if slices.Contains(argv, flag) {
-			t.Errorf("%s was passed for a field the caller never set: %v", flag, argv)
-		}
+	if slices.Contains(argv, "--limit") {
+		t.Errorf("--limit was passed for a field the caller never set: %v", argv)
 	}
 	if slices.Contains(argv, "--all") {
 		t.Errorf("a false boolean was passed as a flag: %v", argv)
+	}
+}
+
+// An MCP caller silent on --budget still gets one — the alternative is the
+// full refusal cap landing in its context on every call. An explicit
+// --budget, however small, must never be overridden by the default.
+func TestABudgetOfZeroGetsTheMCPDefault(t *testing.T) {
+	argv := searchArgv(mcp.SearchArgs{Query: "agvtool"})
+	assertHasFlagValue(t, argv, "--budget", strconv.Itoa(mcp.DefaultBudget))
+
+	argv = searchArgv(mcp.SearchArgs{Query: "agvtool", Budget: 400})
+	assertHasFlagValue(t, argv, "--budget", "400")
+	if slices.Contains(argv, strconv.Itoa(mcp.DefaultBudget)) {
+		t.Errorf("an explicit --budget of 400 was overridden by the default %d: %v", mcp.DefaultBudget, argv)
 	}
 }
 
@@ -869,6 +883,73 @@ func TestAZeroACallerMeantReachesTheVerb(t *testing.T) {
 				t.Errorf("%s was passed for a field the caller never set: %v", flag, argv)
 			}
 		}
+	}
+}
+
+// Guards against a version that stamps --budget onto every call whenever
+// g.Budget > 0, regardless of whether the answer needed shaping; the
+// unshaped case below is what would catch that.
+func TestFindNamesBudgetInTheFooterOnlyWhenItActuallyShapedTheAnswer(t *testing.T) {
+	harness(t)
+
+	shaped, _, err := callFind(t, fixtures.NeedleConversation, "--all", "--budget", "1")
+	if err != nil {
+		t.Fatalf("find: %v", err)
+	}
+	if !strings.Contains(shaped, "(--budget)") {
+		t.Errorf("a --budget of 1 forced every fallback attempt but the footer names no --budget cap:\n%s", shaped)
+	}
+	if want := "── showing 1 of 1 sessions (--budget)"; !strings.Contains(shaped, want) {
+		t.Errorf("footer does not name what the budget cap actually shaped: want a line containing %q, got:\n%s", want, shaped)
+	}
+
+	unshaped, _, err := callFind(t, fixtures.NeedleConversation, "--all", "--budget", "100000")
+	if err != nil {
+		t.Fatalf("find: %v", err)
+	}
+	if strings.Contains(unshaped, "(--budget)") {
+		t.Errorf("a --budget that needed no shaping still named a --budget cap:\n%s", unshaped)
+	}
+
+	noBudget, _, err := callFind(t, fixtures.NeedleConversation, "--all")
+	if err != nil {
+		t.Fatalf("find: %v", err)
+	}
+	if strings.Contains(noBudget, "(--budget)") {
+		t.Errorf("a call with no --budget at all named a --budget cap:\n%s", noBudget)
+	}
+}
+
+// Mirrors TestFindNamesBudgetInTheFooterOnlyWhenItActuallyShapedTheAnswer:
+// turns implements its own retry loop separately from find's fitToBudget.
+func TestTurnsNamesBudgetInTheFooterOnlyWhenItActuallyShapedTheAnswer(t *testing.T) {
+	harness(t)
+
+	shaped, err := callTurns(t, fixtures.NeedleConversation, "--all", "--budget", "1")
+	if err != nil {
+		t.Fatalf("turns: %v", err)
+	}
+	if !strings.Contains(shaped, "(--budget)") {
+		t.Errorf("a --budget of 1 forced every retry but the footer names no --budget cap:\n%s", shaped)
+	}
+	if want := "── showing 1 of 1 matched turns (--budget)"; !strings.Contains(shaped, want) {
+		t.Errorf("footer does not name what the budget cap actually shaped: want a line containing %q, got:\n%s", want, shaped)
+	}
+
+	unshaped, err := callTurns(t, fixtures.NeedleConversation, "--all", "--budget", "100000")
+	if err != nil {
+		t.Fatalf("turns: %v", err)
+	}
+	if strings.Contains(unshaped, "(--budget)") {
+		t.Errorf("a --budget that needed no shaping still named a --budget cap:\n%s", unshaped)
+	}
+
+	noBudget, err := callTurns(t, fixtures.NeedleConversation, "--all")
+	if err != nil {
+		t.Fatalf("turns: %v", err)
+	}
+	if strings.Contains(noBudget, "(--budget)") {
+		t.Errorf("a call with no --budget at all named a --budget cap:\n%s", noBudget)
 	}
 }
 

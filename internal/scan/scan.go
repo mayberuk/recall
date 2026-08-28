@@ -224,11 +224,11 @@ func Search(turns []schema.Turn, q Query) Result {
 
 // appendHits records one turn's matches at a term count below the best seen so
 // far, which are kept only in case nothing ever reaches the full query.
-func appendHits(dst []schema.Hit, turn *schema.Turn, m *matcher, spans *[]span, buf []byte, found int, carried []bool) []schema.Hit {
+func appendHits(dst []schema.Hit, turn *schema.Turn, m *matcher, spans *[]span, buf, raw []byte, found int, carried []bool) []schema.Hit {
 	for j := range carried {
 		carried[j] = carried[j] || m.carried[j]
 	}
-	*spans = m.collect(*spans, buf)
+	*spans = m.collect(*spans, buf, raw)
 	for _, s := range *spans {
 		dst = append(dst, schema.Hit{
 			Session: turn.Session,

@@ -6,6 +6,10 @@ import (
 	"github.com/mayberuk/recall/internal/render"
 )
 
+// DefaultBudget shapes output for an MCP call that never sets --budget,
+// so a silent agent gets a shaped answer rather than the full refusal cap.
+const DefaultBudget = 4000
+
 // Searcher answers the four searching verbs and the guide. It is an interface
 // rather than a call into internal/scan so that the protocol surface and the
 // CLI share one assembly path: the coverage footer is this tool's honesty
@@ -55,7 +59,7 @@ type SearchArgs struct {
 
 	Brief    bool `json:"brief,omitempty" jsonschema:"one line per session, no snippets"`
 	NoUpdate bool `json:"no_update,omitempty" jsonschema:"search the archive as it stands, skipping the refresh from disk"`
-	Budget   int  `json:"budget,omitempty" jsonschema:"shape output to roughly this many tokens instead of refusing"`
+	Budget   int  `json:"budget,omitempty" jsonschema:"shape output to roughly this many tokens instead of refusing; defaults to 4000 when unset"`
 
 	Provider string `json:"provider,omitempty" jsonschema:"auto, an agent name, or all — which agent's transcripts are searched at all; this picks the corpus, where agent filters turns inside it"`
 }
