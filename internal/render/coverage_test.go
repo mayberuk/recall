@@ -162,6 +162,54 @@ func TestCoverageJSONCarriesBothBoundariesSeparately(t *testing.T) {
 	}
 }
 
+func TestAnExpansionNamesWhatWasTypedWhatWasSearchedAndHowFarApart(t *testing.T) {
+	c := Coverage{
+		Sessions: 2, SessionsSearched: 2, LiveFrom: day("2026-06-10"), Refreshed: true,
+		Query: Query{
+			Terms: []string{"authenitcation"}, Required: 1, Total: 1,
+			Carried:  []string{"authenitcation"},
+			Expanded: []Expansion{{Term: "authenitcation", Variants: []string{"authentication"}, Distance: 1}},
+		},
+	}
+	want := "── no turn carries authenitcation; searched authentication instead (1 edit away) — --exact to search only what you typed"
+	got := c.Lines()
+	if len(got) != 3 {
+		t.Fatalf("got %d lines, want 3: %q", len(got), got)
+	}
+	if got[2] != want {
+		t.Errorf("\n got %q\nwant %q", got[2], want)
+	}
+}
+
+func TestAnExpansionLineNamesEveryVariantAndPluralisesItsDistance(t *testing.T) {
+	q := Query{Expanded: []Expansion{
+		{Term: "recieve", Variants: []string{"receive", "recieved"}, Distance: 1},
+		{Term: "kubernets", Variants: []string{"kubernetes"}, Distance: 2},
+	}}
+	got := q.lines()
+	want := []string{
+		"── no turn carries recieve; searched receive, recieved instead (1 edit away) — --exact to search only what you typed",
+		"── no turn carries kubernets; searched kubernetes instead (2 edits away) — --exact to search only what you typed",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d lines, want %d: %q", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("line %d\n got %q\nwant %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestAQueryWithNothingSubstitutedPrintsNoExpansionLine(t *testing.T) {
+	q := Query{Terms: []string{"wallet", "balance"}, Required: 1, Total: 2, Carried: []string{"wallet", "balance"}}
+	for _, line := range q.lines() {
+		if strings.Contains(line, "searched") || strings.Contains(line, "--exact") {
+			t.Errorf("an unexpanded query printed %q", line)
+		}
+	}
+}
+
 // TestCoverageNotesAppearAsTheirOwnFooterLines: a Note is a narrowing that is
 // not a count, so it belongs beside the Limits lines, not folded into one of
 // the two pinned header lines.
@@ -336,6 +384,29 @@ func TestCoverageWithStatsRoundTrips(t *testing.T) {
 	}
 	if round.LiveFromAt != c.LiveFromAt {
 		t.Errorf("LiveFromAt = %q, want %q", round.LiveFromAt, c.LiveFromAt)
+	}
+}
+
+func TestExpansionsReachTheJSONQueryAndAreAbsentWhenNothingWasSubstituted(t *testing.T) {
+	expanded, err := json.Marshal(Query{
+		Terms: []string{"settlemint"}, Required: 1, Total: 1, Carried: []string{"settlemint"},
+		Expanded: []Expansion{{Term: "settlemint", Variants: []string{"settlement"}, Distance: 1}},
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	want := `{"terms":["settlemint"],"required":1,"total":1,"carried":["settlemint"],` +
+		`"expanded":[{"term":"settlemint","variants":["settlement"],"distance":1}]}`
+	if string(expanded) != want {
+		t.Errorf("got  %s\nwant %s", expanded, want)
+	}
+
+	plain, err := json.Marshal(Query{Terms: []string{"settlement"}, Required: 1, Total: 1})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(plain), "expanded") {
+		t.Errorf("a query with nothing substituted emitted %s", plain)
 	}
 }
 

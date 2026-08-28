@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -35,15 +36,22 @@ func TestNoTermReportWhenSomethingMatched(t *testing.T) {
 	}
 }
 
-// A typo is the case this exists for: nothing came back, and the corpus does
-// carry a word one edit away.
 func TestATypoIsAnsweredWithTheWordTheCorpusCarries(t *testing.T) {
 	turns, _ := corpus(t)
 
 	typo := "quixotrupe"
 	res := Search(turns, Query{Text: typo})
-	if len(res.Hits) != 0 {
-		t.Fatalf("%q matched %d turns, so it cannot pin the miss path", typo, len(res.Hits))
+	if len(res.Hits) == 0 {
+		t.Fatalf("%q found nothing, though the corpus carries %q one edit away",
+			typo, fixtures.NeedleConversation)
+	}
+	for _, h := range res.Hits {
+		if !strings.Contains(strings.ToLower(h.Text), fixtures.NeedleConversation) {
+			t.Errorf("a returned turn carries neither %q nor %q: %q", typo, fixtures.NeedleConversation, h.Text)
+		}
+	}
+	if got, want := res.Match.Expanded, []Expansion{{Term: typo, Variants: []string{fixtures.NeedleConversation}, Distance: 1}}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Expanded %+v, want %+v", got, want)
 	}
 
 	got := report(t, res, typo)
@@ -166,6 +174,257 @@ func TestNearbyMaxCapsAndDisables(t *testing.T) {
 	}
 	if res := Search(turns, Query{Text: "curson", NearbyMax: -1}); len(res.Terms) != 0 {
 		t.Errorf("%d term reports with the pass disabled, want 0", len(res.Terms))
+	}
+}
+
+// spelledBytes is derived from the fixture text, not read back from a run, so
+// the pass-counting tests below stay non-circular.
+const (
+	spelledText  = "the settlement batch cleared"
+	spelledBytes = int64(len(spelledText))
+)
+
+func spelledCorpus() []schema.Turn {
+	return []schema.Turn{turn("s1", schema.TierConversation, spelledText)}
+}
+
+func TestAMissIsReRunWithTheCorpusWordOneEditAway(t *testing.T) {
+	res := Search(spelledCorpus(), Query{Text: "settlemint"})
+
+	if len(res.Hits) != 1 {
+		t.Fatalf("%d hits, want 1 — the turn carrying the word one edit away", len(res.Hits))
+	}
+	// The span must locate the substituted word, not the typed term's length.
+	h := res.Hits[0]
+	if got := h.Text[h.Offset : h.Offset+h.Length]; got != "settlement" {
+		t.Errorf("the hit locates %q, want %q", got, "settlement")
+	}
+	want := []Expansion{{Term: "settlemint", Variants: []string{"settlement"}, Distance: 1}}
+	if !reflect.DeepEqual(res.Match.Expanded, want) {
+		t.Errorf("Expanded %+v, want %+v", res.Match.Expanded, want)
+	}
+	if res.Passes != 3 {
+		t.Errorf("reported %d passes, want 3 — the walk, the survey, and the re-run", res.Passes)
+	}
+	if res.BytesScanned != 3*spelledBytes {
+		t.Errorf("charged %d bytes, want %d — three readings of the corpus", res.BytesScanned, 3*spelledBytes)
+	}
+}
+
+// Two edits away is offered, never substituted, unlike the one-edit case above.
+func TestATwoEditNeighbourIsSuggestedAndNeverSubstituted(t *testing.T) {
+	res := Search(spelledCorpus(), Query{Text: "settlamint"})
+
+	if len(res.Hits) != 0 {
+		t.Fatalf("%d hits, want 0 — two edits is often a different word", len(res.Hits))
+	}
+	if len(res.Match.Expanded) != 0 {
+		t.Errorf("Expanded %+v, want nothing substituted", res.Match.Expanded)
+	}
+	got := report(t, res, "settlamint")
+	if len(got.Nearby) == 0 || got.Nearby[0].Text != "settlement" {
+		t.Fatalf("suggestions %v, want settlement offered", names(got.Nearby))
+	}
+	if got.Nearby[0].Distance != 2 {
+		t.Fatalf("suggested %q at distance %d, want 2 — the fixture is wrong",
+			got.Nearby[0].Text, got.Nearby[0].Distance)
+	}
+	if res.Passes != 2 {
+		t.Errorf("reported %d passes, want 2 — nothing was close enough to re-run for", res.Passes)
+	}
+}
+
+func TestExactRunsNoExpansion(t *testing.T) {
+	res := Search(spelledCorpus(), Query{Text: "settlemint", Exact: true})
+
+	if len(res.Hits) != 0 {
+		t.Errorf("%d hits under --exact, want 0", len(res.Hits))
+	}
+	if len(res.Match.Expanded) != 0 {
+		t.Errorf("Expanded %+v under --exact, want nothing", res.Match.Expanded)
+	}
+	// Offering survives --exact; only substituting does not.
+	if got := report(t, res, "settlemint"); len(got.Nearby) == 0 || got.Nearby[0].Text != "settlement" {
+		t.Errorf("suggestions %v, want settlement still offered", names(got.Nearby))
+	}
+	if relaxed := Search(spelledCorpus(), Query{Text: "settlemint"}); len(relaxed.Hits) == 0 {
+		t.Error("the same query without --exact found nothing, so --exact is not what suppressed it")
+	}
+}
+
+// Passes and bytes are asserted together: a no-op pass can't satisfy both.
+func TestASearchCarryingEveryTermReadsTheCorpusOnce(t *testing.T) {
+	res := Search(spelledCorpus(), Query{Text: "settlement batch"})
+
+	if len(res.Hits) != 2 {
+		t.Fatalf("%d hits, want 2 — one per term of the turn carrying both", len(res.Hits))
+	}
+	if res.Passes != 1 {
+		t.Errorf("reported %d passes, want 1", res.Passes)
+	}
+	if res.BytesScanned != spelledBytes {
+		t.Errorf("charged %d bytes, want %d — one reading of the corpus", res.BytesScanned, spelledBytes)
+	}
+	if len(res.Terms) != 0 || len(res.Match.Expanded) != 0 {
+		t.Errorf("a search that found everything produced %d term reports and %d expansions, want none",
+			len(res.Terms), len(res.Match.Expanded))
+	}
+}
+
+func TestARelaxedResultExpandsTheTermNoTurnCarries(t *testing.T) {
+	turns := []schema.Turn{
+		turn("s1", schema.TierConversation, "the batch was replayed"),
+		turn("s2", schema.TierConversation, "the settlement batch cleared"),
+	}
+	before := Search(turns, Query{Text: "batch settlemint", Exact: true})
+	if before.Match.Required != 1 || before.Match.Total != 2 {
+		t.Fatalf("without expansion the search carried %d of %d terms, want 1 of 2 — the fixture is wrong",
+			before.Match.Required, before.Match.Total)
+	}
+
+	res := Search(turns, Query{Text: "batch settlemint"})
+	if res.Match.Required != 2 || res.Match.Total != 2 {
+		t.Fatalf("carried %d of %d terms, want both", res.Match.Required, res.Match.Total)
+	}
+	for _, h := range res.Hits {
+		if h.Session != "s2" {
+			t.Errorf("hit from %s, want only the turn carrying both", h.Session)
+		}
+	}
+	want := []Expansion{{Term: "settlemint", Variants: []string{"settlement"}, Distance: 1}}
+	if !reflect.DeepEqual(res.Match.Expanded, want) {
+		t.Errorf("Expanded %+v, want %+v", res.Match.Expanded, want)
+	}
+	if len(res.Terms) != 0 {
+		t.Errorf("%d term reports on a search that returned turns, want 0", len(res.Terms))
+	}
+}
+
+func TestARelaxedResultKeepsAReRunThatCarriesATermNothingDid(t *testing.T) {
+	turns := []schema.Turn{
+		turn("s1", schema.TierConversation, "the batch was replayed"),
+		turn("s2", schema.TierConversation, "the settlement cleared overnight"),
+	}
+	res := Search(turns, Query{Text: "batch settlemint"})
+
+	if res.Match.Required != 1 {
+		t.Fatalf("Required %d, want 1 — no turn carries both words even after the substitution", res.Match.Required)
+	}
+	want := []string{"batch", "settlemint"}
+	if !reflect.DeepEqual(res.Match.Carried, want) {
+		t.Errorf("Carried %v, want %v — the term nothing carried is now carried", res.Match.Carried, want)
+	}
+	sessions := map[string]bool{}
+	for _, h := range res.Hits {
+		sessions[h.Session] = true
+	}
+	if !sessions["s1"] || !sessions["s2"] {
+		t.Errorf("hits came from %v, want both turns", sessions)
+	}
+	if len(res.Match.Expanded) != 1 || res.Match.Expanded[0].Term != "settlemint" {
+		t.Errorf("Expanded %+v, want the substitution declared", res.Match.Expanded)
+	}
+}
+
+func TestAReRunThatReachesNothingNewIsDiscardedAndStillCharged(t *testing.T) {
+	turns := []schema.Turn{
+		turn("s1", schema.TierConversation, "the batch was replayed"),
+		turn("s2", schema.TierConversation, "the settlement batch is deprecated"),
+	}
+	res := Search(turns, Query{Text: "batch settlemint", Not: []string{"deprecated"}})
+
+	if res.Passes != 3 {
+		t.Fatalf("reported %d passes, want 3 — the walk, the survey, and a re-run that came to nothing", res.Passes)
+	}
+	for _, h := range res.Hits {
+		if h.Session != "s1" {
+			t.Errorf("hit from %s, want only the turn --not left standing", h.Session)
+		}
+	}
+	if len(res.Match.Expanded) != 0 {
+		t.Errorf("Expanded %+v, want nothing — the substitution reached no turn", res.Match.Expanded)
+	}
+	if got := res.Match.Carried; len(got) != 1 || got[0] != "batch" {
+		t.Errorf("Carried %v, want [batch] — the answer is the one the first walk produced", got)
+	}
+}
+
+func TestARelaxedResultCarryingEveryTermIsNotExpanded(t *testing.T) {
+	turns := []schema.Turn{
+		turn("s1", schema.TierConversation, "alpha was decided here"),
+		turn("s2", schema.TierConversation, "bravo was decided here"),
+	}
+	res := Search(turns, Query{Text: "alpha bravo"})
+
+	if !res.Match.Relaxed() {
+		t.Fatalf("carried %d of %d terms, want a relaxed result — the fixture is wrong",
+			res.Match.Required, res.Match.Total)
+	}
+	if len(res.Match.Expanded) != 0 {
+		t.Errorf("Expanded %+v, want nothing — every term is carried by some turn", res.Match.Expanded)
+	}
+	if res.Passes != 1 {
+		t.Errorf("reported %d passes, want 1 — nothing was left unanswered to explain", res.Passes)
+	}
+}
+
+// twoSpellings orders its words opposite to ranking order, so a test can't
+// pass by accident.
+func twoSpellings() []schema.Turn {
+	return []schema.Turn{turn("s1", schema.TierConversation, "cursos and cursor in one turn")}
+}
+
+func TestATermStaysOneSlotHoweverManyNeedlesBackIt(t *testing.T) {
+	res := Search(twoSpellings(), Query{Text: "curson batch"})
+
+	if res.Match.Total != 2 {
+		t.Fatalf("Total %d, want 2 — the query has two words", res.Match.Total)
+	}
+	if res.Match.Required != 1 {
+		t.Errorf("Required %d, want 1 — two spellings of one term are one term carried", res.Match.Required)
+	}
+	if got := res.Match.Carried; len(got) != 1 || got[0] != "curson" {
+		t.Errorf("Carried %v, want [curson] — the term is named as typed, not as substituted", got)
+	}
+	if len(res.Hits) != 2 {
+		t.Fatalf("%d hits, want 2 — one per occurrence of either needle", len(res.Hits))
+	}
+}
+
+func TestOneTermsSeveralNeedlesAreCollectedInOffsetOrder(t *testing.T) {
+	res := Search(twoSpellings(), Query{Text: "curson"})
+
+	want := []span{{offset: 0, length: 6}, {offset: 11, length: 6}}
+	if len(res.Hits) != len(want) {
+		t.Fatalf("%d hits, want %d", len(res.Hits), len(want))
+	}
+	for i, w := range want {
+		got := res.Hits[i]
+		if got.Offset != w.offset || got.Length != w.length {
+			t.Errorf("hit %d at offset %d length %d, want %d and %d", i, got.Offset, got.Length, w.offset, w.length)
+		}
+	}
+	if got := res.Hits[0].Text[res.Hits[0].Offset : res.Hits[0].Offset+res.Hits[0].Length]; got != "cursos" {
+		t.Errorf("the first hit locates %q, want the earlier spelling %q", got, "cursos")
+	}
+}
+
+// Candidates are ordered nearest-first, matching what the collector hands in,
+// so the cut at four relies on stopping rather than filtering the whole list.
+func TestSubstitutionsTakeTheNearestFourAndStopAtTwoEdits(t *testing.T) {
+	reports := []TermReport{
+		{Term: "carried", Turns: 3, Nearby: nil},
+		{Term: "typo", Nearby: []Term{
+			{Text: "typa", Distance: 1}, {Text: "typb", Distance: 1},
+			{Text: "typc", Distance: 1}, {Text: "typd", Distance: 1},
+			{Text: "type", Distance: 1}, {Text: "taupe", Distance: 2},
+		}},
+		{Term: "distant", Nearby: []Term{{Text: "distend", Distance: 2}}},
+	}
+	got := substitutions(reports)
+	want := []Expansion{{Term: "typo", Variants: []string{"typa", "typb", "typc", "typd"}, Distance: 1}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("substitutions(...) = %+v, want %+v", got, want)
 	}
 }
 

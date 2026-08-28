@@ -10,11 +10,15 @@
 #     source ~/dev/recall/shell/recall.zsh
 #
 # Use:
-#     recall-fzf [--ids] <query> [extra recall find flags...]
+#     recall-fzf [--ids] [--resume] <query> [extra recall find flags...]
 #
 #     recall-fzf agvtool                  # live finder, prints the chosen session id
 #     recall-fzf agvtool --all            # extra flags go straight to recall find
 #     recall show "$(recall-fzf agvtool)" # composes, because the id is all it prints
+#
+# Flags:
+#     --ids       print one session id per line instead of full records
+#     --resume    bind enter to resume the session instead of printing its id
 #
 # With no terminal the same pipeline runs under `fzf --filter` and prints the
 # ranked records to stdout, so an agent that cannot drive a finder still reaches
@@ -43,8 +47,9 @@ recall-fzf() {
   emulate -L zsh
   setopt local_options pipe_fail
 
-  local ids=0
+  local ids=0 resume=0
   [[ ${1-} == --ids ]] && { ids=1; shift }
+  [[ ${1-} == --resume ]] && { resume=1; shift }
 
   local query=${1-}
   (( $# > 0 )) && shift
@@ -86,7 +91,7 @@ recall-fzf() {
   local fmt_q=${(q)RECALL_FZF_FORMAT_FLAG}
   local extra_q=${(j: :)${(q)extra}}
   local note_q=${(q)notefile}
-  local keys='enter: id   ctrl-o: full session   ctrl-/: preview   esc: quit'
+  local keys='enter: id   ctrl-o: full session   ctrl-r: resume   ctrl-/: preview   esc: quit'
 
   local -a common=(
     # --read0 without --print0 makes fzf separate records with the same newline
@@ -127,7 +132,6 @@ recall-fzf() {
     --header="$keys"
     # Field 1 is hidden from the rows by --with-nth but stays addressable, which
     # is the only reason it is a field at all.
-    --accept-nth=1
     --preview="$bin_q show {1}"
     --preview-window='right,55%,border-left,wrap'
     --bind='ctrl-/:toggle-preview'
@@ -138,7 +142,14 @@ recall-fzf() {
     # reaches an agent's context, which is what the bounded-output dealbreaker
     # protects. Do not copy this number to a path that returns text to a caller.
     --bind="ctrl-o:execute($bin_q show {1} --full --max-bytes 4194304 | \${PAGER:-less} -R)"
+    --bind="ctrl-r:execute(eval \"\$($bin_q resume {1})\")"
   )
+
+  if (( resume )); then
+    ui+=(--bind="enter:execute(eval \"\$($bin_q resume {1})\")")
+  else
+    ui+=(--accept-nth=1)
+  fi
 
   local -i rc=0 forward=0
   local -a ps

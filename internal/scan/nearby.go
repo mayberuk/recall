@@ -64,6 +64,36 @@ func nearbyMax(n int) int {
 	return n
 }
 
+// substituteDistance is how far a corpus word may sit from what the caller
+// typed and still be searched in its place. One edit is a typo; two is often
+// a different word, so a neighbour further out stays an offer in the Nearby
+// report instead, where the caller decides.
+const substituteDistance = 1
+
+// variantsPerTerm caps how many neighbours one term is searched under, so the
+// re-run's needle count stays a small multiple of the query's word count.
+const variantsPerTerm = 4
+
+// substitutions relies on each report's Nearby list already being ordered
+// nearest, then most used, then alphabetically, and stops at the first
+// neighbour the distance rules out.
+func substitutions(reports []TermReport) []Expansion {
+	var out []Expansion
+	for _, r := range reports {
+		var vars []string
+		for _, n := range r.Nearby {
+			if n.Distance > substituteDistance || len(vars) == variantsPerTerm {
+				break
+			}
+			vars = append(vars, n.Text)
+		}
+		if len(vars) > 0 {
+			out = append(out, Expansion{Term: r.Term, Variants: vars, Distance: substituteDistance})
+		}
+	}
+	return out
+}
+
 // survey explains a zero-result search: what each term matched on its own, and
 // for the terms nothing matched, what the corpus does carry near them. It
 // returns the work it did alongside, because this is a second reading of the

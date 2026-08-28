@@ -28,6 +28,37 @@ func TestClassifyReadsCaseFromRawNotFolded(t *testing.T) {
 	}
 }
 
+func TestATermIsFoundAndLocatedThroughAnyOfItsNeedles(t *testing.T) {
+	typed := newTerm(rawTerm{text: "settlemint"}, true)
+	widened := typed
+	widened.alt = []variant{newVariant("settlement"), newVariant("batch")}
+
+	for _, c := range []struct {
+		name  string
+		t     term
+		text  string
+		found bool
+		index int
+	}{
+		{"typed needle only, present", typed, "the settlemint cleared", true, 4},
+		{"typed needle only, absent", typed, "the settlement cleared", false, -1},
+		{"substituted needle present", widened, "the settlement cleared", true, 4},
+		{"neither needle present", widened, "nothing of the sort", false, -1},
+		{"earliest needle wins, not the first listed", widened, "the batch and the settlement", true, 4},
+		{"typed needle behind a substituted one", widened, "batch then settlemint", true, 0},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			folded := fold(nil, c.text)
+			if got := c.t.found(folded); got != c.found {
+				t.Errorf("found(%q) = %v, want %v", c.text, got, c.found)
+			}
+			if got := c.t.index(folded); got != c.index {
+				t.Errorf("index(%q) = %d, want %d", c.text, got, c.index)
+			}
+		})
+	}
+}
+
 func TestCaseBoundary(t *testing.T) {
 	cases := []struct {
 		name string

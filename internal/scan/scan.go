@@ -8,6 +8,8 @@
 package scan
 
 import (
+	"slices"
+
 	"github.com/mayberuk/recall/internal/schema"
 )
 
@@ -72,6 +74,17 @@ type Match struct {
 	// Carried names the terms the returned turns hold, so a caller reading a
 	// relaxed result knows which words the answer is actually about.
 	Carried []string
+
+	// Expanded is the terms answered by a word the caller did not type.
+	Expanded []Expansion
+}
+
+// Expansion is one query term searched under another spelling: what was typed,
+// the corpus words put in its place, and how far from the typed term they are.
+type Expansion struct {
+	Term     string
+	Variants []string
+	Distance int
 }
 
 // Relaxed reports whether the search returned turns carrying fewer than every
@@ -111,13 +124,9 @@ type Result struct {
 	WordsScanned int64
 	WordsCounted bool
 
-	// Passes is how many readings the coverage footer explains, not how many
-	// walks the corpus took: one to find hits, and one more when a zero-result
-	// search went back to explain itself. The explaining pass is itself two
-	// walks when the query has more than one term — counting each term, then
-	// gathering nearby words for the ones nothing carried — and the bytes of
-	// both are charged, so dividing BytesScanned by Passes does not give
-	// corpus size.
+	// Passes is how many readings the coverage footer explains: one to find
+	// hits, one to explain a short result, one for a substitution re-run.
+	// Dividing BytesScanned by Passes does not give corpus size.
 	Passes int
 
 	// TurnsBySession is conversation turns per session, counted over every turn
@@ -126,9 +135,9 @@ type Result struct {
 	// session is not penalised for having used tools.
 	TurnsBySession map[string]int
 
-	// Terms is populated only when Hits is empty: per query term, how many turns
-	// carry that term alone, and for a term no turn carries, the corpus terms
-	// closest to it.
+	// Terms is populated when the search came back short: per query term, how
+	// many turns carry it, and the closest corpus terms for one none does. A
+	// substitution can still fill Hits without emptying it.
 	Terms []TermReport
 
 	// Match is how the query was read and what the hits carry.
@@ -195,31 +204,80 @@ func Search(turns []schema.Turn, q Query) Result {
 	// see mergeShards for the argument and the rule that folds the ranges back
 	// into one answer.
 	found := mergeShards(scanShards(turns, q, mp, want), &res, len(m.terms))
-	res.Hits = found.hits
+	settle(&res, mp, found)
 
-	if len(res.Hits) > 0 {
-		res.Match.Required = found.need
-		if found.need < len(m.terms) && len(found.below) > 0 {
-			res.Hits = append(res.Hits, found.below...)
-			res.Match.Required = found.need - 1
-			or(found.carried, found.belowCarried)
-		}
-		for j := range found.carried {
-			if found.carried[j] {
-				res.Match.Carried = append(res.Match.Carried, m.terms[j].text)
-			}
-		}
+	// A full hit returns here, keeping the hit path at its one-pass cost. A
+	// miss or a relaxed result goes on to the survey; --exact skips the pass
+	// since it forecloses the substitution the pass exists for.
+	miss := len(res.Hits) == 0
+	partial := !miss && !q.Exact && slices.Contains(found.carried, false)
+	if len(m.terms) == 0 || q.NearbyMax < 0 || !(miss || partial) {
+		return res
 	}
 
-	if len(res.Hits) == 0 && len(m.terms) > 0 && q.NearbyMax >= 0 {
-		var w work
-		res.Terms, w = m.survey(turns, want, q.Keep, nearbyMax(q.NearbyMax), q.CountWords)
-		res.BytesScanned += w.bytes
-		res.LinesScanned += w.lines
-		res.WordsScanned += w.words
-		res.Passes++
+	reports, w := m.survey(turns, want, q.Keep, nearbyMax(q.NearbyMax), q.CountWords)
+	res.BytesScanned += w.bytes
+	res.LinesScanned += w.lines
+	res.WordsScanned += w.words
+	res.Passes++
+	if miss {
+		res.Terms = reports
+	}
+	if !q.Exact {
+		substitute(turns, q, &res, mp, want, reports)
 	}
 	return res
+}
+
+// settle keeps below-level hits only when the full query was unsatisfiable.
+func settle(res *Result, m *matcher, found merged) {
+	res.Hits = found.hits
+	res.Match.Required, res.Match.Carried = 0, nil
+	if len(found.hits) == 0 {
+		return
+	}
+	res.Match.Required = found.need
+	if found.need < len(m.terms) && len(found.below) > 0 {
+		res.Hits = append(res.Hits, found.below...)
+		res.Match.Required = found.need - 1
+		or(found.carried, found.belowCarried)
+	}
+	for j := range found.carried {
+		if found.carried[j] {
+			res.Match.Carried = append(res.Match.Carried, m.terms[j].text)
+		}
+	}
+}
+
+// substitute re-runs the search with the corpus words closest to the terms
+// nothing carried, keeping the re-run only if it reaches one of them.
+func substitute(turns []schema.Turn, q Query, res *Result, m *matcher, want map[schema.Tier]bool, reports []TermReport) {
+	exps := substitutions(reports)
+	if len(exps) == 0 {
+		return
+	}
+	wide := m.widen(exps)
+
+	// again is a throwaway; only its scan cost is carried back to res.
+	var again Result
+	found := mergeShards(scanShards(turns, q, &wide, want), &again, len(wide.terms))
+	res.BytesScanned += again.BytesScanned
+	res.LinesScanned += again.LinesScanned
+	res.WordsScanned += again.WordsScanned
+	res.Passes++
+
+	var widened Result
+	settle(&widened, &wide, found)
+
+	// Kept only if it carries a term the first walk carried none of, else it
+	// answered a different question for nothing.
+	if len(widened.Match.Carried) <= len(res.Match.Carried) {
+		return
+	}
+	res.Hits = widened.Hits
+	res.Match.Required = widened.Match.Required
+	res.Match.Carried = widened.Match.Carried
+	res.Match.Expanded = exps
 }
 
 // appendHits records one turn's matches at a term count below the best seen so
