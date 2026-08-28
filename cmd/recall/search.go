@@ -709,7 +709,11 @@ func expansionViews(exps []scan.Expansion) []render.Expansion {
 	}
 	out := make([]render.Expansion, 0, len(exps))
 	for _, e := range exps {
-		out = append(out, render.Expansion{Term: e.Term, Variants: e.Variants, Distance: e.Distance})
+		view := render.Expansion{Term: e.Term, Variants: e.Variants, Distance: e.Distance, Synonym: e.Synonym}
+		if e.Synonym {
+			view.Version = scan.SynonymsVersion
+		}
+		out = append(out, view)
 	}
 	return out
 }

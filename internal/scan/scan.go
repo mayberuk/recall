@@ -85,6 +85,10 @@ type Expansion struct {
 	Term     string
 	Variants []string
 	Distance int
+
+	// Synonym marks an expansion from the shipped table rather than edit-distance
+	// substitution; Distance is meaningless here and left zero.
+	Synonym bool
 }
 
 // Relaxed reports whether the search returned turns carrying fewer than every
@@ -205,6 +209,8 @@ func Search(turns []schema.Turn, q Query) Result {
 	// into one answer.
 	found := mergeShards(scanShards(turns, q, mp, want), &res, len(m.terms))
 	settle(&res, mp, found)
+	// Table hits are read here; substitute below may still append its own.
+	res.Match.Expanded = synonymExpansions(mp, res.Match.Carried)
 
 	// A full hit returns here, keeping the hit path at its one-pass cost. A
 	// miss or a relaxed result goes on to the survey; --exact skips the pass
@@ -277,7 +283,7 @@ func substitute(turns []schema.Turn, q Query, res *Result, m *matcher, want map[
 	res.Hits = widened.Hits
 	res.Match.Required = widened.Match.Required
 	res.Match.Carried = widened.Match.Carried
-	res.Match.Expanded = exps
+	res.Match.Expanded = append(res.Match.Expanded, exps...)
 }
 
 // appendHits records one turn's matches at a term count below the best seen so

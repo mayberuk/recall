@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/mayberuk/recall/internal/schema"
@@ -31,7 +32,7 @@ func TestClassifyReadsCaseFromRawNotFolded(t *testing.T) {
 func TestATermIsFoundAndLocatedThroughAnyOfItsNeedles(t *testing.T) {
 	typed := newTerm(rawTerm{text: "settlemint"}, true)
 	widened := typed
-	widened.alt = []variant{newVariant("settlement"), newVariant("batch")}
+	widened.alt = []variant{newVariant("settlement", false), newVariant("batch", false)}
 
 	for _, c := range []struct {
 		name  string
@@ -59,6 +60,152 @@ func TestATermIsFoundAndLocatedThroughAnyOfItsNeedles(t *testing.T) {
 	}
 }
 
+func TestNewTermAddsSynonymVariantsForATableWord(t *testing.T) {
+	long := newTerm(rawTerm{text: "database"}, false)
+	if len(long.alt) != 1 || string(long.alt[0].needle) != "db" {
+		t.Fatalf("database.alt = %+v, want one variant needle \"db\"", long.alt)
+	}
+	if !long.found(fold(nil, "back up the db before the migration")) {
+		t.Error("a term for \"database\" did not find a turn carrying only \"db\"")
+	}
+
+	short := newTerm(rawTerm{text: "db"}, false)
+	if len(short.alt) != 1 || string(short.alt[0].needle) != "database" {
+		t.Fatalf("db.alt = %+v, want one variant needle \"database\"", short.alt)
+	}
+}
+
+func TestNewTermAddsNoAltForAWordNotInTheTable(t *testing.T) {
+	if got := newTerm(rawTerm{text: "wallet"}, false); len(got.alt) != 0 {
+		t.Errorf("wallet.alt = %+v, want none", got.alt)
+	}
+}
+
+func TestNewTermSuppressesSynonymsUnderExactAndInAPhrase(t *testing.T) {
+	if got := newTerm(rawTerm{text: "database"}, true); len(got.alt) != 0 {
+		t.Errorf("database.alt under --exact = %+v, want none", got.alt)
+	}
+	if got := newTerm(rawTerm{text: "database", quoted: true}, false); len(got.alt) != 0 {
+		t.Errorf("database.alt inside a quoted phrase = %+v, want none", got.alt)
+	}
+}
+
+// collect needs the expanded signal to sort one term's spans: two needles can
+// otherwise return them out of offset order.
+func TestCompileMarksTheMatcherExpandedForATableWord(t *testing.T) {
+	if m := compile(Query{Text: "database"}); !m.expanded {
+		t.Error("compiling a table word did not set matcher.expanded")
+	}
+	if m := compile(Query{Text: "wallet"}); m.expanded {
+		t.Error("compiling a non-table word set matcher.expanded")
+	}
+}
+
+func TestASynonymReachesATurnTheTypedSpellingNeverUses(t *testing.T) {
+	turns := []schema.Turn{turn("s1", schema.TierConversation, "back up the db before the migration runs")}
+	res := Search(turns, Query{Text: "database"})
+	if len(res.Hits) != 1 {
+		t.Fatalf("%d hits, want 1 — the turn only ever says \"db\"", len(res.Hits))
+	}
+	want := []Expansion{{Term: "database", Variants: []string{"db"}, Synonym: true}}
+	if !reflect.DeepEqual(res.Match.Expanded, want) {
+		t.Errorf("Expanded %+v, want %+v", res.Match.Expanded, want)
+	}
+
+	turns2 := []schema.Turn{turn("s1", schema.TierConversation, "restore the database from the nightly snapshot")}
+	res2 := Search(turns2, Query{Text: "db"})
+	if len(res2.Hits) != 1 {
+		t.Fatalf("%d hits, want 1 — the turn only ever says \"database\"", len(res2.Hits))
+	}
+	want2 := []Expansion{{Term: "db", Variants: []string{"database"}, Synonym: true}}
+	if !reflect.DeepEqual(res2.Match.Expanded, want2) {
+		t.Errorf("Expanded %+v, want %+v", res2.Match.Expanded, want2)
+	}
+}
+
+// "id" inside "video" is not a hit: a needle the caller never typed earns a
+// match only where it stands as its own word. Dropping that rule inflated
+// "identifier" from 141 hits to 49,524.
+func TestSynonymNeedleInsideALongerWordIsNotAHit(t *testing.T) {
+	turns := []schema.Turn{turn("s1", schema.TierConversation, "check the video for calibration before the demo")}
+	res := Search(turns, Query{Text: "identifier"})
+	if len(res.Hits) != 0 {
+		t.Fatalf("%d hits, want 0 — \"id\" only ever sits inside \"video\", never as its own word", len(res.Hits))
+	}
+	if len(res.Match.Expanded) != 0 {
+		t.Errorf("Expanded %+v, want none — the interior match must not be declared as a search that contributed", res.Match.Expanded)
+	}
+}
+
+func TestSynonymNeedleAsAStandaloneWordIsAHit(t *testing.T) {
+	turns := []schema.Turn{turn("s1", schema.TierConversation, "grab the id from the response before you log it")}
+	res := Search(turns, Query{Text: "identifier"})
+	if len(res.Hits) != 1 {
+		t.Fatalf("%d hits, want 1 — \"id\" appears as its own word", len(res.Hits))
+	}
+	want := []Expansion{{Term: "identifier", Variants: []string{"id"}, Synonym: true}}
+	if !reflect.DeepEqual(res.Match.Expanded, want) {
+		t.Errorf("Expanded %+v, want %+v", res.Match.Expanded, want)
+	}
+}
+
+func TestExactSuppressesSynonymExpansion(t *testing.T) {
+	turns := []schema.Turn{turn("s1", schema.TierConversation, "back up the db before the migration runs")}
+	res := Search(turns, Query{Text: "database", Exact: true})
+	if len(res.Hits) != 0 {
+		t.Errorf("%d hits under --exact, want 0 — \"database\" never appears literally", len(res.Hits))
+	}
+	if len(res.Match.Expanded) != 0 {
+		t.Errorf("Expanded %+v under --exact, want none", res.Match.Expanded)
+	}
+}
+
+func TestQuotedPhraseSuppressesSynonymExpansion(t *testing.T) {
+	turns := []schema.Turn{turn("s1", schema.TierConversation, "back up the db before the migration runs")}
+	res := Search(turns, Query{Text: `"database"`})
+	if len(res.Hits) != 0 {
+		t.Errorf("%d hits for a quoted phrase, want 0 — \"database\" never appears literally", len(res.Hits))
+	}
+	if len(res.Match.Expanded) != 0 {
+		t.Errorf("Expanded %+v for a quoted phrase, want none", res.Match.Expanded)
+	}
+}
+
+func TestANonTableWordAddsNoExpansion(t *testing.T) {
+	turns := []schema.Turn{turn("s1", schema.TierConversation, "the wallet button")}
+	res := Search(turns, Query{Text: "wallet"})
+	if len(res.Hits) == 0 {
+		t.Fatal("0 hits for a term the turn carries literally")
+	}
+	if len(res.Match.Expanded) != 0 {
+		t.Errorf("Expanded %+v, want none — \"wallet\" is not a table word", res.Match.Expanded)
+	}
+}
+
+func TestASynonymThatMatchesNothingReportsNoExpansion(t *testing.T) {
+	turns := []schema.Turn{turn("s1", schema.TierConversation, "the wallet button")}
+	res := Search(turns, Query{Text: "database"})
+	if len(res.Hits) != 0 {
+		t.Fatalf("%d hits, want 0 — neither \"database\" nor \"db\" appears", len(res.Hits))
+	}
+	if len(res.Match.Expanded) != 0 {
+		t.Errorf("Expanded %+v, want none on a total miss", res.Match.Expanded)
+	}
+}
+
+func TestASynonymTermAbsentFromTheReturnedTurnsIsNotDeclared(t *testing.T) {
+	turns := []schema.Turn{turn("s1", schema.TierConversation, "the wallet button")}
+	res := Search(turns, Query{Text: "database wallet"})
+	if len(res.Hits) == 0 {
+		t.Fatal("0 hits, want the relaxed match on \"wallet\" alone")
+	}
+	if len(res.Match.Expanded) != 0 {
+		t.Errorf("Expanded %+v, want none — the returned turn carries only \"wallet\"", res.Match.Expanded)
+	}
+}
+
+// caseBoundary in isolation, including the guards that keep it inert outside
+// ASCII and off invalid indices.
 func TestCaseBoundary(t *testing.T) {
 	cases := []struct {
 		name string

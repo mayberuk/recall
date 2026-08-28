@@ -89,13 +89,14 @@ type term struct {
 // variant is one substituted needle with its own anchor, because the rarest
 // byte of a corpus word is not the rarest byte of the word it stands in for.
 type variant struct {
-	needle []byte
-	rare   int
+	needle  []byte
+	rare    int
+	synonym bool
 }
 
-func newVariant(text string) variant {
+func newVariant(text string, synonym bool) variant {
 	n := []byte(text)
-	return variant{needle: n, rare: rarestByte(n)}
+	return variant{needle: n, rare: rarestByte(n), synonym: synonym}
 }
 
 type rawTerm struct {
@@ -118,6 +119,9 @@ func compile(q Query) matcher {
 			continue
 		}
 		seen[t.text] = true
+		if len(t.alt) > 0 {
+			m.expanded = true
+		}
 		m.terms = append(m.terms, t)
 	}
 	for _, raw := range q.Not {
@@ -154,7 +158,7 @@ func (m *matcher) widen(exps []Expansion) matcher {
 			}
 			alt := make([]variant, 0, len(e.Variants))
 			for _, v := range e.Variants {
-				alt = append(alt, newVariant(v))
+				alt = append(alt, newVariant(v, false))
 			}
 			out.terms[i].alt = alt
 		}
@@ -171,7 +175,16 @@ func newTerm(r rawTerm, exact bool) term {
 		needle = stem(text)
 	}
 	n := []byte(needle)
-	return term{text: text, needle: n, rare: rarestByte(n), phrase: r.quoted}
+	t := term{text: text, needle: n, rare: rarestByte(n), phrase: r.quoted}
+	if !exact && !r.quoted {
+		if syns := synonymsFor(text); len(syns) > 0 {
+			t.alt = make([]variant, 0, len(syns))
+			for _, s := range syns {
+				t.alt = append(t.alt, newVariant(s, true))
+			}
+		}
+	}
+	return t
 }
 
 // splitTerms cuts a query into terms on whitespace, except inside double
@@ -254,7 +267,7 @@ type span struct {
 func (m *matcher) mark(folded []byte, need int) int {
 	found := 0
 	for i := range m.terms {
-		m.carried[i] = m.terms[i].found(folded)
+		m.carried[i] = m.terms[i].satisfied(folded)
 		if m.carried[i] {
 			found++
 			continue
@@ -273,9 +286,45 @@ func (m *matcher) mark(folded []byte, need int) int {
 // before matching so a turn the caller ruled out costs one pass, not two.
 func (m matcher) excluded(folded []byte) bool {
 	for i := range m.exclude {
-		if m.exclude[i].found(folded) {
+		if m.exclude[i].satisfied(folded) {
 			return true
 		}
+	}
+	return false
+}
+
+func (t *term) satisfied(folded []byte) bool {
+	if indexAt(folded, t.needle, t.rare) >= 0 {
+		return true
+	}
+	for i := range t.alt {
+		v := &t.alt[i]
+		if v.synonym {
+			if wordOccurs(folded, v.needle, v.rare) {
+				return true
+			}
+			continue
+		}
+		if indexAt(folded, v.needle, v.rare) >= 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// folded stands in for raw: this caller cannot reach the unfolded text, and a
+// folded-only verdict is a subset of the raw-aware one, so it never over-counts.
+func wordOccurs(folded, needle []byte, rare int) bool {
+	for base := 0; base+len(needle) <= len(folded); {
+		at := indexAt(folded[base:], needle, rare)
+		if at < 0 {
+			return false
+		}
+		off := base + at
+		if classify(folded, folded, off, len(needle)) == schema.MatchWord {
+			return true
+		}
+		base = off + len(needle)
 	}
 	return false
 }
@@ -295,9 +344,9 @@ func (m *matcher) collect(dst []span, folded, raw []byte) []span {
 			continue
 		}
 		t := &m.terms[i]
-		dst = appendSpans(dst, folded, raw, t.needle, t.rare)
+		dst = appendSpans(dst, folded, raw, t.needle, t.rare, false)
 		for j := range t.alt {
-			dst = appendSpans(dst, folded, raw, t.alt[j].needle, t.alt[j].rare)
+			dst = appendSpans(dst, folded, raw, t.alt[j].needle, t.alt[j].rare, t.alt[j].synonym)
 		}
 	}
 	if len(m.terms) > 1 || m.expanded {
@@ -314,14 +363,21 @@ func (m *matcher) collect(dst []span, folded, raw []byte) []span {
 
 // appendSpans walks each needle separately: a span's length is its own
 // needle's, and two needles of one term rarely share a length.
-func appendSpans(dst []span, folded, raw, needle []byte, rare int) []span {
+//
+// wordOnly requires a synonym needle to stand as its own word. Without it, "id"
+// substituted for "identifier" matches inside "video", "provide" and
+// "consider" — a measured 351x precision regression.
+func appendSpans(dst []span, folded, raw, needle []byte, rare int, wordOnly bool) []span {
 	for base := 0; base+len(needle) <= len(folded); {
 		at := indexAt(folded[base:], needle, rare)
 		if at < 0 {
 			break
 		}
 		off := base + at
-		dst = append(dst, span{offset: off, length: len(needle), kind: classify(folded, raw, off, len(needle))})
+		kind := classify(folded, raw, off, len(needle))
+		if !wordOnly || kind == schema.MatchWord {
+			dst = append(dst, span{offset: off, length: len(needle), kind: kind})
+		}
 		base = off + len(needle)
 	}
 	return dst

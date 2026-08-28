@@ -442,6 +442,44 @@ func TestATypoIsCorrectedAndTheCoverageFooterSaysSo(t *testing.T) {
 	}
 }
 
+func TestASynonymIsSearchedAndTheCoverageFooterSaysSo(t *testing.T) {
+	turns := []schema.Turn{
+		{Session: "s1", UUID: "u1", Repo: "acme/mobile", Tier: schema.TierConversation,
+			Text: "back up the db before the migration runs"},
+	}
+	const line = "── also searched db for database as a whole word (shipped synonyms, v1)"
+
+	c := &corpus{turns: turns, tiers: []schema.Tier{schema.TierConversation}}
+	f := newSearchFlags()
+	f.All = true
+	if err := f.check(); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	s := c.search("database", f, rank.Concentration)
+	if len(s.ranked.Sessions) != 1 {
+		t.Fatalf("%d sessions for a query answered only under its table counterpart, want 1", len(s.ranked.Sessions))
+	}
+	if !hasLine(c.coverageOf(s.scan, f, s.skipped, nil).Lines(), line) {
+		t.Errorf("the footer never named the substitution\n%s", strings.Join(c.coverageOf(s.scan, f, s.skipped, nil).Lines(), "\n"))
+	}
+
+	exact := &corpus{turns: turns, tiers: []schema.Tier{schema.TierConversation}}
+	e := newSearchFlags()
+	e.All, e.Exact = true, true
+	if err := e.check(); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	ex := exact.search("database", e, rank.Concentration)
+	if len(ex.ranked.Sessions) != 0 {
+		t.Fatalf("%d sessions under --exact, want 0", len(ex.ranked.Sessions))
+	}
+	for _, l := range exact.coverageOf(ex.scan, e, ex.skipped, nil).Lines() {
+		if strings.Contains(l, "also searched") {
+			t.Errorf("--exact printed %q", l)
+		}
+	}
+}
+
 // A repo-scoped search must survey its own slice for a typo's replacement,
 // not defer to the whole-machine probe — otherwise a misspelling the caller's
 // own repo can answer comes back as "found elsewhere" instead.

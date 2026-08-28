@@ -201,6 +201,62 @@ func TestAnExpansionLineNamesEveryVariantAndPluralisesItsDistance(t *testing.T) 
 	}
 }
 
+func TestASynonymExpansionNamesTheSubstitutedWordAndTheTableVersion(t *testing.T) {
+	q := Query{Expanded: []Expansion{{Term: "database", Variants: []string{"db"}, Synonym: true, Version: 1}}}
+	got := q.lines()
+	want := "── also searched db for database as a whole word (shipped synonyms, v1)"
+	if len(got) != 1 || got[0] != want {
+		t.Errorf("got %q, want [%q]", got, want)
+	}
+}
+
+func TestASynonymExpansionListsEveryVariant(t *testing.T) {
+	q := Query{Expanded: []Expansion{{Term: "configuration", Variants: []string{"config", "cfg"}, Synonym: true, Version: 1}}}
+	got := q.lines()
+	want := "── also searched config, cfg for configuration as a whole word (shipped synonyms, v1)"
+	if len(got) != 1 || got[0] != want {
+		t.Errorf("got %q, want [%q]", got, want)
+	}
+}
+
+func TestASynonymAndAFuzzyExpansionEachPrintTheirOwnLineFormat(t *testing.T) {
+	q := Query{Expanded: []Expansion{
+		{Term: "database", Variants: []string{"db"}, Synonym: true, Version: 1},
+		{Term: "settlemint", Variants: []string{"settlement"}, Distance: 1},
+	}}
+	got := q.lines()
+	want := []string{
+		"── also searched db for database as a whole word (shipped synonyms, v1)",
+		"── no turn carries settlemint; searched settlement instead (1 edit away) — --exact to search only what you typed",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d lines, want %d: %q", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("line %d\n got %q\nwant %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestSynonymAndFuzzyExpansionsHaveDisjointJSONShapes(t *testing.T) {
+	syn, err := json.Marshal(Expansion{Term: "database", Variants: []string{"db"}, Synonym: true, Version: 1})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if want := `{"term":"database","variants":["db"],"synonym":true,"version":1}`; string(syn) != want {
+		t.Errorf("got  %s\nwant %s", syn, want)
+	}
+
+	typo, err := json.Marshal(Expansion{Term: "settlemint", Variants: []string{"settlement"}, Distance: 1})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if want := `{"term":"settlemint","variants":["settlement"],"distance":1}`; string(typo) != want {
+		t.Errorf("got  %s\nwant %s", typo, want)
+	}
+}
+
 func TestAQueryWithNothingSubstitutedPrintsNoExpansionLine(t *testing.T) {
 	q := Query{Terms: []string{"wallet", "balance"}, Required: 1, Total: 2, Carried: []string{"wallet", "balance"}}
 	for _, line := range q.lines() {
